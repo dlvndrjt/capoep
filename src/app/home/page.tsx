@@ -1,4 +1,6 @@
-import { ListingCard } from "@/components/listing-card";
+"use client"
+
+import { ListingCardDialog } from "@/components/listing-card-dialog"
 
 const mockListings = [
   {
@@ -15,17 +17,17 @@ const mockListings = [
     creator: "0x8765...4321",
     proofs: ["https://example.com/certificate2", "https://github.com/myprojects"],
   },
-];
+]
 
 export default function Home() {
   return (
     <div className="container mx-auto py-8">
-      <h1 className="text-2xl font-bold">Learning Proofs</h1>
+      <h1 className="text-2xl font-bold mb-6">Learning Proofs</h1>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {mockListings.map((listing) => (
-          <ListingCard key={listing.id} {...listing} />
+          <ListingCardDialog key={listing.id} listing={listing} />
         ))}
       </div>
     </div>
-  );
+  )
 }
