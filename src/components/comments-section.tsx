@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useState } from "react"
 import { Reply, ArrowBigUp, ArrowBigDown  } from "lucide-react"
+import { ReputationDisplay } from "./reputation-display"
 
 interface Comment {
   id: string
@@ -91,6 +92,7 @@ function CommentComponent({ comment }: { comment: Comment }) {
       <div className="rounded-lg border p-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
           <span>{comment.commenter.slice(0, 6)}...{comment.commenter.slice(-4)}</span>
+          <ReputationDisplay address={comment.commenter} className="ml-2" />
           <span>•</span>
           <span>{comment.timestamp}</span>
         </div>
