@@ -20,6 +20,9 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { ListingContent } from "./listing-content";
+import { ReputationDisplay } from "./reputation-display";
+import { CategoryLabels, EducationCategory } from "@/types/education";
+import { Badge } from "@/components/ui/badge";
 
 interface ListingType {
   id: number;
@@ -27,6 +30,7 @@ interface ListingType {
   details: string;
   creator: string;
   proofs: string[];
+  category: EducationCategory;
 }
 
 export function ListingCardDialog({ listing }: { listing: ListingType }) {
@@ -49,7 +53,19 @@ export function ListingCardDialog({ listing }: { listing: ListingType }) {
             <div className="flex items-start justify-between">
               <div>
                 <CardTitle>{listing.title}</CardTitle>
-                <CardDescription>Created by: {listing.creator}</CardDescription>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="secondary">
+                    {CategoryLabels[listing.category]}
+                  </Badge>
+                  <CardDescription>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-muted-foreground">
+                        Created by: {listing.creator}
+                      </p>
+                      <ReputationDisplay address={listing.creator} />
+                    </div>
+                  </CardDescription>
+                </div>
               </div>
               <Link href={`/listing/${listing.id}`} target="_blank" passHref>
                 <Button
@@ -68,26 +84,24 @@ export function ListingCardDialog({ listing }: { listing: ListingType }) {
           </CardContent>
         </Card>
       </DialogTrigger>
-      <DialogContent className="max-h-[80vh] max-w-[600px] overflow-auto p-0">
-        <div className="flex h-full flex-col">
-          <DialogHeader className="flex flex-row items-center justify-between p-6">
-            <DialogTitle>{listing.title}</DialogTitle>
-            <Link href={`/listing/${listing.id}`} target="_blank" passHref>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="flex items-center gap-2"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Open in new tab
-              </Button>
-            </Link>
-          </DialogHeader>
-          {/* TODO: Make this scrollable*/}
-          <ScrollArea className="h-full w-full flex-1 rounded-md border p-4">
-            <ListingContent listing={listing} />
-          </ScrollArea>
-        </div>
+
+      <DialogContent className="h-[80vh] max-w-[600px] p-0 flex flex-col">
+        <DialogHeader className="flex flex-row items-center justify-between p-6 shrink-0">
+          <DialogTitle>{listing.title}</DialogTitle>
+          <Link href={`/listing/${listing.id}`} target="_blank" passHref>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex items-center gap-2 mr-4"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open in new tab
+            </Button>
+          </Link>
+        </DialogHeader>
+        <ScrollArea className="min-h-0 flex-1 rounded-md border p-4">
+          <ListingContent listing={listing} />
+        </ScrollArea>
       </DialogContent>
     </Dialog>
   );
