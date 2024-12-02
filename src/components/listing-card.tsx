@@ -21,6 +21,7 @@ import { CommentsSection } from "./comments-section";
 import { Textarea } from "./ui/textarea";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
 
 interface ListingCardProps {
   id: number;
