@@ -1,21 +1,21 @@
-"use client"
+"use client";
 
-import { Button } from "@/components/ui/button"
-import { CreateListingDialog } from "@/components/create-listing-dialog"
-import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button";
+import { CreateListingDialog } from "@/components/create-listing-dialog";
+import { useRouter } from "next/navigation";
 
 export function Navbar() {
-  const router = useRouter()
+  const router = useRouter();
 
   const handleNavigation = (path: string) => {
-    router.push(path)
-  }
+    router.push(path);
+  };
 
   return (
-    <nav className="flex justify-between items-center p-4 bg-gray-800 text-white">
+    <nav className="flex items-center justify-between bg-zinc-900 p-4 text-white">
       <Button
         variant="ghost"
-        className="text-xl font-bold hover:underline p-0 text-white"
+        className="p-0 text-xl font-bold text-white hover:underline"
         onClick={() => handleNavigation("/home")}
       >
         CAPOEP
@@ -31,5 +31,5 @@ export function Navbar() {
         </Button>
       </div>
     </nav>
-  )
-} 
+  );
+}
