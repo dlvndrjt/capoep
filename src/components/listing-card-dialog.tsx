@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, ThumbsUp, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { ListingContent } from "./listing-content";
 import { ReputationDisplay } from "./reputation-display";
@@ -31,6 +31,12 @@ interface ListingType {
   creator: string;
   proofs: string[];
   category: EducationCategory;
+  minted: boolean;
+  createdAt: number;
+  voteCount?: {
+    upvotes: number;
+    downvotes: number;
+  };
 }
 
 export function ListingCardDialog({ listing }: { listing: ListingType }) {
@@ -53,15 +59,26 @@ export function ListingCardDialog({ listing }: { listing: ListingType }) {
             <div className="flex items-start justify-between">
               <div>
                 <CardTitle>{listing.title}</CardTitle>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex flex-wrap items-center gap-2 mt-1">
                   <Badge variant="secondary">
                     {CategoryLabels[listing.category]}
                   </Badge>
+                  {listing.minted && (
+                    <Badge variant="default">Minted</Badge>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <ThumbsUp className="h-3 w-3" />
+                      {listing.voteCount?.upvotes || 0}
+                    </Badge>
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <ThumbsDown className="h-3 w-3" />
+                      {listing.voteCount?.downvotes || 0}
+                    </Badge>
+                  </div>
                   <CardDescription>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm text-muted-foreground">
-                        Created by: {listing.creator}
-                      </p>
+                      <span>Created by: {listing.creator}</span>
                       <ReputationDisplay address={listing.creator} />
                     </div>
                   </CardDescription>
@@ -81,6 +98,9 @@ export function ListingCardDialog({ listing }: { listing: ListingType }) {
           </CardHeader>
           <CardContent>
             <p className="line-clamp-2">{listing.details}</p>
+            <div className="mt-2 text-sm text-muted-foreground">
+              Created {new Date(listing.createdAt * 1000).toLocaleDateString()}
+            </div>
           </CardContent>
         </Card>
       </DialogTrigger>
