@@ -403,34 +403,34 @@ contract CAPOEP is
         // Generate SVG image
         string memory image = Base64.encode(bytes(_generateSVG(listing)));
 
-        // Create enhanced JSON metadata
+        // Create enhanced JSON metadata with strict formatting
         string memory json = Base64.encode(
             bytes(
                 string(
                     abi.encodePacked(
-                        '{"name": "',
+                        '{"name":"',
                         listing.title,
-                        '", "description": "',
+                        '","description":"',
                         listing.details,
-                        '", "image": "data:image/svg+xml;base64,',
+                        '","image":"data:image/svg+xml;base64,',
                         image,
-                        '", "attributes": [',
-                        '{"trait_type": "Category", "value": "',
+                        '","attributes":[',
+                        '{"trait_type":"Category","value":"',
                         listing.category,
-                        '"},',
-                        '{"trait_type": "Attestations", "value": "',
-                        _toString(listing.attestCount),
-                        '"},',
-                        '{"trait_type": "Creator Reputation", "value": "',
-                        _toString(uint256(getReputation(listing.creator))),
-                        '"},',
-                        '{"trait_type": "Proof Count", "value": "',
-                        _toString(listing.proofs.length),
-                        '"},',
-                        '{"trait_type": "Created", "value": "',
-                        _toString(listing.createdAt),
                         '"}',
-                        '], "proofs": ',
+                        ',{"trait_type":"Attestations","value":',
+                        _toString(listing.attestCount),
+                        "}",
+                        ',{"trait_type":"Creator Reputation","value":',
+                        _toString(uint256(getReputation(listing.creator))),
+                        "}",
+                        ',{"trait_type":"Proof Count","value":',
+                        _toString(listing.proofs.length),
+                        "}",
+                        ',{"trait_type":"Created","value":',
+                        _toString(listing.createdAt),
+                        "}",
+                        '],"proofs":',
                         _arrayToJson(listing.proofs),
                         "}"
                     )
