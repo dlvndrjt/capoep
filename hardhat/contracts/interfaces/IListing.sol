@@ -26,8 +26,6 @@ interface IListing {
         string details; // Detailed description
         string[] proofs; // Array of proof URIs/links
         string category; // Educational category
-        uint256 attestCount; // Number of positive votes
-        uint256 refuteCount; // Number of negative votes
         uint256 createdAt; // Creation timestamp
         ListingState state; // Current listing state
         uint256 linkedToId; // ID of newer version (if archived)
