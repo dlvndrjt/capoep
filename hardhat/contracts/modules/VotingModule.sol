@@ -2,6 +2,8 @@
 pragma solidity ^0.8.22;
 
 import "../interfaces/IVoting.sol";
+import "../interfaces/IListing.sol";
+import "../libraries/ListingTypes.sol";
 
 /// @title VotingModule
 /// @notice Implements voting functionality for CAPOEP
@@ -12,7 +14,7 @@ contract VotingModule is IVoting {
     error AlreadyVoted();
     error VoteDoesNotExist();
     error ListingNotActive();
-    error EmptyComment();
+    error EmptyVoteComment();
 
     // STATE VARIABLES
 
@@ -29,9 +31,9 @@ contract VotingModule is IVoting {
         uint256 listingId,
         bool isAttest,
         string memory comment
-    ) external override {
+    ) public virtual {
         if (_votes[listingId][msg.sender].timestamp != 0) revert AlreadyVoted();
-        if (bytes(comment).length == 0) revert EmptyComment();
+        if (bytes(comment).length == 0) revert EmptyVoteComment();
 
         _votes[listingId][msg.sender] = Vote({
             isAttest: isAttest,
@@ -80,4 +82,12 @@ contract VotingModule is IVoting {
     ) external view override returns (address[] memory) {
         return _listingVoters[listingId];
     }
+}
+
+struct Vote {
+    bool isAttest;
+    string comment;
+    uint256 timestamp;
+    uint256 upvotes;
+    uint256 downvotes;
 }
