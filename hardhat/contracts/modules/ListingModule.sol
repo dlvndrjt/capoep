@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import "../interfaces/IListing.sol";
+import "../libraries/ListingTypes.sol";
 
 /// @title ListingModule
 /// @notice Implements educational achievement listing management for CAPOEP
@@ -22,6 +23,9 @@ contract ListingModule is IListing {
 
     /// @dev Primary storage for all listings
     mapping(uint256 => Listing) private _listings;
+
+    /// @dev Storage for listing vote counts
+    mapping(uint256 => ListingTypes.ListingCount) private _listingCounts;
 
     // MODIFIERS
 
@@ -61,12 +65,15 @@ contract ListingModule is IListing {
             details: details,
             proofs: proofs,
             category: category,
-            attestCount: 0,
-            refuteCount: 0,
             createdAt: block.timestamp,
             state: ListingState.Active,
             linkedToId: 0,
             archiveNote: ""
+        });
+
+        _listingCounts[newListingId] = ListingTypes.ListingCount({
+            attestCount: 0,
+            refuteCount: 0
         });
 
         emit ListingCreated(newListingId, msg.sender);
@@ -95,7 +102,7 @@ contract ListingModule is IListing {
     /// @inheritdoc IListing
     function getListing(
         uint256 listingId
-    ) external view listingExists(listingId) returns (Listing memory) {
+    ) public view returns (IListing.Listing memory) {
         return _listings[listingId];
     }
 
@@ -113,12 +120,35 @@ contract ListingModule is IListing {
         Listing storage listing = _listings[listingId];
         return
             listing.state == ListingState.Active &&
-            listing.attestCount == 0 &&
-            listing.refuteCount == 0;
+            _listingCounts[listingId].attestCount == 0 &&
+            _listingCounts[listingId].refuteCount == 0;
     }
 
     /// @inheritdoc IListing
     function getTotalListings() external view returns (uint256) {
         return _nextListingId;
+    }
+
+    // INTERNAL FUNCTIONS
+
+    /// @notice Updates a listing's state to Minted
+    /// @dev Internal function called when an NFT is minted from a listing
+    /// @param listingId The ID of the listing being minted
+    function _setListingMinted(uint256 listingId) internal {
+        _listings[listingId].state = ListingState.Minted;
+        emit ListingStateChanged(listingId, ListingState.Minted, "");
+    }
+
+    /// @notice Checks if a listing has enough attestations to be minted
+    /// @dev Internal function to verify minting requirements
+    /// @param listingId The ID of the listing to check
+    /// @return bool indicating if listing can be minted
+    function canBeMinted(uint256 listingId) internal view virtual returns (bool) {
+        return _listingCounts[listingId].attestCount >= 2;
+    }
+
+    struct ListingCount {
+        uint256 attestCount;
+        uint256 refuteCount;
     }
 }
