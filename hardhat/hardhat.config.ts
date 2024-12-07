@@ -11,7 +11,7 @@ const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.27", // Keep your original version or update it if needed
     settings: {
-      viaIR: true,
+      viaIR: false,
       optimizer: {
         enabled: true, // Enable the optimizer
         runs: 200, // This specifies the optimization level. You can set this based on your needs (default is 200)
