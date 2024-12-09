@@ -7,14 +7,19 @@ pragma solidity ^0.8.22;
 interface IVoting {
     // STRUCTS
     
-    /// @notice Structure for storing vote information
-    /// @dev Tracks individual votes and their associated metadata
+    /// @dev Struct to represent a vote
     struct Vote {
         bool isAttest; // true for attestation, false for refutation
         string comment; // Required comment explaining the vote
         uint256 timestamp; // When the vote was cast
         uint256 upvotes; // Number of upvotes this vote has received
         uint256 downvotes; // Number of downvotes this vote has received
+    }
+
+    /// @dev Struct to represent vote counts
+    struct VoteCount {
+        uint256 attestCount;
+        uint256 contestCount;
     }
 
     // EVENTS
@@ -69,14 +74,19 @@ interface IVoting {
 
     // VIEW FUNCTIONS
     
+    /// @notice Retrieves the vote count for a specific listing
+    /// @param listingId The ID of the listing
+    /// @return The vote count structure
+    function getVoteCount(uint256 listingId) external view returns (VoteCount memory);
+
+    /// @notice Retrieves the list of voters for a specific listing
+    /// @param listingId The ID of the listing
+    /// @return An array of voter addresses
+    function getVoters(uint256 listingId) external view returns (address[] memory);
+
     /// @notice Get a specific vote for a listing
     /// @param listingId The ID of the listing
     /// @param voter The address of the voter
     /// @return Vote struct containing the vote details
     function getVote(uint256 listingId, address voter) external view returns (Vote memory);
-
-    /// @notice Get all voters for a listing
-    /// @param listingId The ID of the listing
-    /// @return Array of voter addresses
-    function getVoters(uint256 listingId) external view returns (address[] memory);
 }

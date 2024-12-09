@@ -25,6 +25,21 @@ interface IReputation {
         string memory reason
     ) external;
 
+    /// @notice Updates a user's reputation based on a vote
+    /// @param user The address of the user whose reputation is being updated
+    /// @param isAttest Whether the vote is an attestation (true) or refutation (false)
+    function updateReputationFromVote(address user, bool isAttest) external;
+
+    /// @notice Updates a user's reputation based on feedback
+    /// @param user The address of the user whose reputation is being updated
+    /// @param isUpvote Whether the feedback is positive (true) or negative (false)
+    function updateReputationFromFeedback(address user, bool isUpvote) external;
+
+    /// @notice Updates a user's reputation based on comment feedback
+    /// @param user The address of the user whose reputation is being updated
+    /// @param isUpvote Whether the feedback is positive (true) or negative (false)
+    function updateReputationFromCommentFeedback(address user, bool isUpvote) external;
+
     // VIEW FUNCTIONS
 
     /// @notice Get the reputation score for an address
