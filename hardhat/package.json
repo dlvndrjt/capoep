@@ -12,9 +12,11 @@
     "verify:sepolia": "hardhat run scripts/verify.ts --network sepolia",
     "verify:mumbai": "hardhat run scripts/verify.ts --network mumbai",
     "node": "hardhat node",
-    "clean": "hardhat clean"
+    "clean": "hardhat clean",
+    "clean-compile-test": "npx hardhat clean && npx hardhat compile && npx hardhat test"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@nomicfoundation/hardhat-verify": "^2.0.0",
     "@types/chai": "^4.3.11",
