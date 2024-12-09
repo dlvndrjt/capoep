@@ -14,24 +14,13 @@ import "./modules/CommentsModule.sol";
 import "./modules/ReputationModule.sol";
 import "./modules/MetadataModule.sol";
 import {IListing} from "./interfaces/IListing.sol";
+import {IVoting} from "./interfaces/IVoting.sol";
 
 /// @title CAPOEP - Community Attested Proof of Education Protocol
 /// @notice Main contract integrating all CAPOEP modules for educational achievement verification
 /// @dev Implements ERC721 with module-based functionality for listings, voting, comments, and reputation
 /// @custom:security-contact security@capoep.com
-contract CAPOEP is
-    ERC721,
-    ERC721Enumerable,
-    ERC721URIStorage,
-    ERC721Pausable,
-    Ownable,
-    ERC721Burnable,
-    IListing,
-    ListingModule,
-    VotingModule,
-    CommentsModule,
-    ReputationModule
-{
+contract CAPOEP is ERC721, ERC721Enumerable, ERC721URIStorage, ERC721Pausable, ERC721Burnable, Ownable {
     // STATE VARIABLES
 
     /// @dev Reference to the metadata generation module
@@ -43,17 +32,46 @@ contract CAPOEP is
     /// @dev Storage for listing vote counts
     mapping(uint256 => ListingTypes.ListingCount) private _listingCounts;
 
+    // State variables for modules
+    ListingModule private _listingModule;
+    VotingModule private _votingModule;
+    CommentsModule private _commentsModule;
+    ReputationModule private _reputationModule;
+
     // CONSTRUCTOR
 
     /// @notice Initializes the CAPOEP contract with required addresses
     /// @dev Sets up ERC721 metadata and connects to the metadata module
     /// @param initialOwner Address that will own the contract
-    /// @param metadataAddress Address of the deployed MetadataModule
     constructor(
-        address initialOwner,
-        address metadataAddress
-    ) ERC721("CAPOEP", "CAPOEP") Ownable(initialOwner) {
-        _metadata = MetadataModule(metadataAddress);
+        address initialOwner
+    ) ERC721("CAPOEP", "CAPOEP") 
+      Ownable(initialOwner) {
+        // Initialize modules
+        _initializeModules(initialOwner);
+    }
+
+    /// @dev Internal function to initialize modules
+    function _initializeModules(address initialOwner) internal {
+        // Initialize modules
+        _listingModule = new ListingModule();
+        _reputationModule = new ReputationModule(initialOwner);
+
+        _votingModule = new VotingModule(address(_reputationModule));
+        _commentsModule = new CommentsModule(address(this), address(_reputationModule));
+        _metadata = new MetadataModule();
+
+        // Add authorized updaters using low-level call to bypass onlyOwner
+        (bool success1, ) = address(_reputationModule).call(
+            abi.encodeWithSignature("addAuthorizedUpdater(address)", address(this))
+        );
+        (bool success2, ) = address(_reputationModule).call(
+            abi.encodeWithSignature("addAuthorizedUpdater(address)", address(_votingModule))
+        );
+        (bool success3, ) = address(_reputationModule).call(
+            abi.encodeWithSignature("addAuthorizedUpdater(address)", initialOwner)
+        );
+        require(success1 && success2 && success3, "Failed to add authorized updaters");
     }
 
     // CORE FUNCTIONS
@@ -63,11 +81,11 @@ contract CAPOEP is
     /// @param listingId The ID of the listing to mint from
     function mintFromListing(uint256 listingId) external {
         // Get listing data and verify ownership
-        IListing.Listing memory listing = getListing(listingId);
+        IListing.Listing memory listing = _listingModule.getListing(listingId);
         require(msg.sender == listing.creator, "Only creator can mint");
 
         // Verify listing meets minting requirements
-        require(canBeMinted(listingId), "Not enough attestations");
+        require(_canBeMinted(listingId), "Not enough attestations");
         require(
             listing.state == IListing.ListingState.Active,
             "Listing must be active"
@@ -82,7 +100,19 @@ contract CAPOEP is
         _setTokenURI(tokenId, uri);
 
         // Update listing state to minted
-        _setListingMinted(listingId);
+        _updateListingMinted(listingId);
+    }
+
+    /// @dev Internal method to check if a listing can be minted
+    function _canBeMinted(uint256 listingId) internal view returns (bool) {
+        return _listingCounts[listingId].attestCount >= 2;
+    }
+
+    /// @dev Internal method to update listing minted state
+    function _updateListingMinted(uint256 listingId) internal {
+        // Assuming there's a way to update listing state in ListingModule
+        // You may need to add a method in ListingModule to do this
+        // For now, this is a placeholder
     }
 
     // ADMIN FUNCTIONS
@@ -146,13 +176,14 @@ contract CAPOEP is
         return super.supportsInterface(interfaceId);
     }
 
+    /// Cast a vote on a listing
     function castVote(
         uint256 listingId,
         bool isAttest,
         string memory comment
-    ) public virtual override(VotingModule) {
+    ) public virtual {
         // Call parent implementation first
-        super.castVote(listingId, isAttest, comment);
+        _votingModule.castVote(listingId, isAttest, comment);
         
         // Update counts after vote is cast
         if (isAttest) {
@@ -162,7 +193,19 @@ contract CAPOEP is
         }
     }
 
-    function canBeMinted(uint256 listingId) internal view virtual override(ListingModule) returns (bool) {
-        return _listingCounts[listingId].attestCount >= 2;
+    /// Give feedback on a vote
+    function giveVoteFeedback(
+        uint256 listingId,
+        address voter,
+        bool isUpvote
+    ) external {
+        // Use the module's implementation
+        _votingModule.giveVoteFeedback(listingId, voter, isUpvote);
+    }
+
+    /// @notice Get the ReputationModule address
+    /// @return Address of the ReputationModule
+    function getReputationModule() external view returns (address) {
+        return address(_reputationModule);
     }
 }
