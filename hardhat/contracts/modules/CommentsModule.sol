@@ -5,6 +5,7 @@ import "../interfaces/IComments.sol";
 import "../interfaces/IReputation.sol";
 import "../interfaces/IListing.sol";
 import "../interfaces/IErrors.sol";
+import "hardhat/console.sol";
 
 /// @title CommentsModule
 /// @notice Implements commenting functionality for CAPOEP
@@ -56,17 +57,11 @@ contract CommentsModule is IComments, IErrors {
     );
 
     // CONSTRUCTOR
-    /// @notice Constructor to initialize the CommentsModule
-    /// @param capoepAddress The address of the main CAPOEP contract
-    /// @param reputationModule The address of the ReputationModule
-    constructor(address capoepAddress, address reputationModule) {
-        // Store the CAPOEP contract address
-        require(capoepAddress != address(0), "Invalid CAPOEP address");
+    constructor(address capoepAddress, IReputation reputationModule) {
         _capoepAddress = capoepAddress;
-
-        // Validate and store the reputation module address
-        require(reputationModule != address(0), "Invalid reputation module");
-        _reputationModule = IReputation(reputationModule);
+        _reputationModule = reputationModule;
+        console.log("CommentsModule initialized with CAPOEP address:", capoepAddress);
+        console.log("CommentsModule initialized with ReputationModule at:", address(reputationModule));
     }
 
     // MODIFIERS

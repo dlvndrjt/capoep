@@ -6,6 +6,7 @@ import "../interfaces/IListing.sol";
 import "../interfaces/IReputation.sol";
 import "../interfaces/IErrors.sol";
 import "../libraries/ListingTypes.sol";
+import "hardhat/console.sol";
 
 /// @title VotingModule
 /// @notice Implements voting functionality for CAPOEP
@@ -58,12 +59,9 @@ contract VotingModule is IVoting, IErrors {
     );
 
     // CONSTRUCTOR
-    /// @notice Constructor to initialize the VotingModule
-    /// @param reputationModule The address of the ReputationModule
-    constructor(address reputationModule) {
-        // Validate and store the reputation module address
-        require(reputationModule != address(0), "Invalid reputation module");
-        _reputationModule = IReputation(reputationModule);
+    constructor(IReputation reputationModule) {
+        _reputationModule = reputationModule;
+        console.log("VotingModule initialized with reputation module at:", address(reputationModule));
     }
 
     // MODIFIERS

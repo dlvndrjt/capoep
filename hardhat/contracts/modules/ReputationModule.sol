@@ -3,6 +3,7 @@ pragma solidity ^0.8.22;
 
 import "../interfaces/IReputation.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "hardhat/console.sol";
 
 /// @title ReputationModule
 /// @notice Implements reputation tracking system for CAPOEP
@@ -47,7 +48,9 @@ contract ReputationModule is IReputation, Ownable {
     }
 
     // CONSTRUCTOR
-    constructor(address initialOwner) Ownable(initialOwner) {}
+    constructor(address initialOwner) Ownable(initialOwner) {
+        console.log("ReputationModule initialized with owner:", initialOwner);
+    }
 
     // CORE FUNCTIONS
 
@@ -152,6 +155,19 @@ contract ReputationModule is IReputation, Ownable {
     function removeAuthorizedUpdater(address updater) external onlyOwner {
         _authorizedUpdaters[updater] = false;
         emit UpdaterStatusChanged(updater, false);
+    }
+
+    /// @notice Initializes authorized updaters
+    /// @param updaters An array of addresses to be authorized
+    function initializeAuthorizedUpdaters(address[] memory updaters) external onlyOwner {
+        require(msg.sender == owner(), "Caller is not the owner");
+        emit UpdaterStatusChanged(msg.sender, true); // Log the caller
+        emit UpdaterStatusChanged(owner(), true); // Log the owner address
+        require(msg.sender == owner(), "Owner address mismatch"); // Confirm owner address
+        for (uint256 i = 0; i < updaters.length; i++) {
+            _authorizedUpdaters[updaters[i]] = true;
+            emit UpdaterStatusChanged(updaters[i], true);
+        }
     }
 
     /// @notice Sets initial reputation for a user
