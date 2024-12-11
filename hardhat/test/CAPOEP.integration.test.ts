@@ -28,28 +28,58 @@ describe("CAPOEP Integration", function () {
     [owner, user1, user2, user3] = await ethers.getSigners();
 
     // Deploy MetadataModule first
+    console.log("Deploying MetadataModule...");
     const MetadataModule = await ethers.getContractFactory("MetadataModule");
-    metadata = await MetadataModule.deploy();
-    await metadata.waitForDeployment();
+    try {
+        metadata = await MetadataModule.deploy(); // Deploy the contract
+        await metadata.waitForDeployment(); // Wait for the transaction to be mined
+        console.log("MetadataModule deployed at:", metadata.address);
+    } catch (error) {
+        console.error("Error deploying MetadataModule:", error);
+        throw error;
+    }
+    expect(metadata.address).to.not.be.undefined; // Ensure address is defined
 
     // Deploy CAPOEP with metadata address
+    console.log("Deploying CAPOEP with owner:", owner.address);
     const CAPOEP = await ethers.getContractFactory("CAPOEP");
     capoep = await CAPOEP.deploy(owner.address);
-    await capoep.waitForDeployment();
+    if (capoep.deployTransaction) {
+        try {
+            const capoepTx = await capoep.deployTransaction.wait();
+            console.log("CAPOEP deployed at:", capoep.address);
+            console.log("CAPOEP deployment transaction receipt:", capoepTx);
+        } catch (error) {
+            console.error("Error during CAPOEP deployment:", error);
+            throw error; // Re-throw to fail the test if deployment fails
+        }
+    } else {
+        console.error("CAPOEP deployment transaction is undefined.");
+    }
+
+    console.log("ReputationModule address:", await capoep.getReputationModule());
+    console.log("VotingModule address:", await capoep.getVotingModule());
+    console.log("CommentsModule address:", await capoep.getCommentsModule());
+    console.log("ListingModule address:", await capoep.getListingModule());
 
     // Get reputation module
     const reputationModuleAddress = await capoep.getReputationModule();
+    console.log("ReputationModule address:", reputationModuleAddress);
     reputationModule = await ethers.getContractAt("ReputationModule", reputationModuleAddress);
 
     // Add authorized updaters to reputation module
+    console.log("Adding authorized updaters...");
     await reputationModule.connect(owner).addAuthorizedUpdater(owner.address);
     await reputationModule.connect(owner).addAuthorizedUpdater(await capoep.getAddress());
     await reputationModule.connect(owner).addAuthorizedUpdater(user2.address);
     await reputationModule.connect(owner).addAuthorizedUpdater(user3.address);
+    console.log("Authorized updaters added.");
 
     // Ensure initial reputation is set
+    console.log("Setting initial reputation for user2 and user3...");
     await reputationModule.connect(owner).setInitialReputation(user2.address, 10);
     await reputationModule.connect(owner).setInitialReputation(user3.address, 10);
+    console.log("Initial reputations set.");
   });
 
   describe("Listing Lifecycle", function () {
