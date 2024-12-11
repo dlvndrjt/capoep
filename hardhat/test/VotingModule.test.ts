@@ -25,11 +25,21 @@ describe("VotingModule", function () {
     await votingModule.waitForDeployment();
 
     // Add VotingModule as an authorized updater for ReputationModule
-    await reputationModule.connect(owner).addAuthorizedUpdater(await votingModule.getAddress());
+    try {
+        await reputationModule.connect(owner).addAuthorizedUpdater(await votingModule.getAddress());
+    } catch (error) {
+        console.error("Error adding VotingModule as authorized updater:", error);
+        throw error;
+    }
 
     // Add initial reputation to users
-    await reputationModule.connect(owner).updateReputation(user2.address, 100n, "Initial reputation");
-    await reputationModule.connect(owner).updateReputation(user3.address, 100n, "Initial reputation");
+    try {
+      await reputationModule.connect(owner).updateReputation(user2.address, 100n, "Initial reputation");
+      await reputationModule.connect(owner).updateReputation(user3.address, 100n, "Initial reputation");
+    } catch (error) {
+      console.error("Error adding initial reputation to users:", error);
+      throw error;
+    }
   });
 
   describe("Voting Functions", function () {
