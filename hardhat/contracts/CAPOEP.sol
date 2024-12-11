@@ -15,6 +15,7 @@ import "./modules/ReputationModule.sol";
 import "./modules/MetadataModule.sol";
 import {IListing} from "./interfaces/IListing.sol";
 import {IVoting} from "./interfaces/IVoting.sol";
+import "hardhat/console.sol";
 
 /// @title CAPOEP - Community Attested Proof of Education Protocol
 /// @notice Main contract integrating all CAPOEP modules for educational achievement verification
@@ -47,31 +48,32 @@ contract CAPOEP is ERC721, ERC721Enumerable, ERC721URIStorage, ERC721Pausable, E
         address initialOwner
     ) ERC721("CAPOEP", "CAPOEP") 
       Ownable(initialOwner) {
+        console.log("Initializing CAPOEP with owner:", initialOwner);
         // Initialize modules
         _initializeModules(initialOwner);
     }
 
     /// @dev Internal function to initialize modules
     function _initializeModules(address initialOwner) internal {
-        // Initialize modules
-        _listingModule = new ListingModule();
-        _reputationModule = new ReputationModule(initialOwner);
-
-        _votingModule = new VotingModule(address(_reputationModule));
-        _commentsModule = new CommentsModule(address(this), address(_reputationModule));
+        console.log("Initializing modules...");
         _metadata = new MetadataModule();
+        console.log("MetadataModule initialized at:", address(_metadata));
+        _listingModule = new ListingModule();
+        console.log("ListingModule initialized at:", address(_listingModule));
+        _reputationModule = new ReputationModule(initialOwner);
+        console.log("ReputationModule initialized at:", address(_reputationModule));
+        _votingModule = new VotingModule(_reputationModule);
+        console.log("VotingModule initialized at:", address(_votingModule));
+        _commentsModule = new CommentsModule(address(this), _reputationModule);
+        console.log("CommentsModule initialized at:", address(_commentsModule));
 
-        // Add authorized updaters using low-level call to bypass onlyOwner
-        (bool success1, ) = address(_reputationModule).call(
-            abi.encodeWithSignature("addAuthorizedUpdater(address)", address(this))
-        );
-        (bool success2, ) = address(_reputationModule).call(
-            abi.encodeWithSignature("addAuthorizedUpdater(address)", address(_votingModule))
-        );
-        (bool success3, ) = address(_reputationModule).call(
-            abi.encodeWithSignature("addAuthorizedUpdater(address)", initialOwner)
-        );
-        require(success1 && success2 && success3, "Failed to add authorized updaters");
+        // Initialize authorized updaters
+        address[] memory updaters = new address[](3);
+        updaters[0] = address(this);
+        updaters[1] = address(_votingModule);
+        updaters[2] = initialOwner;
+        _reputationModule.initializeAuthorizedUpdaters(updaters);
+
     }
 
     // CORE FUNCTIONS
