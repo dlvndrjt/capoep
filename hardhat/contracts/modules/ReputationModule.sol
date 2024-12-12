@@ -39,6 +39,8 @@ contract ReputationModule is IReputation, Ownable {
     modifier onlyAuthorized() {
         if (!_authorizedUpdaters[msg.sender]) revert UnauthorizedUpdate();
         _;
+        // require(_authorizedUpdaters[msg.sender], "UnauthorizedUpdate()");
+        _;
     }
 
     /// @notice Ensures address is valid
@@ -60,10 +62,9 @@ contract ReputationModule is IReputation, Ownable {
         int256 points,
         string memory reason
     ) external onlyAuthorized validAddress(user) {
-        if (points == 0) revert InvalidReputationChange();
-
+        int256 oldScore = _reputationScores[user];
         _reputationScores[user] += points;
-        emit ReputationChanged(user, points, reason);
+        emit ReputationChanged(user, oldScore, _reputationScores[user], reason);
     }
 
     /// @notice Updates reputation based on voting
@@ -74,11 +75,12 @@ contract ReputationModule is IReputation, Ownable {
         bool isAttest
     ) external onlyAuthorized validAddress(user) {
         int256 points = isAttest ? ATTEST_POINTS : REFUTE_POINTS;
+        int256 oldScore = _reputationScores[user];
         _reputationScores[user] += points;
-        
         emit ReputationChanged(
             user,
-            points,
+            oldScore,
+            _reputationScores[user],
             isAttest ? "Received attestation" : "Received refutation"
         );
     }
@@ -91,11 +93,13 @@ contract ReputationModule is IReputation, Ownable {
         bool isUpvote
     ) external onlyAuthorized validAddress(user) {
         int256 points = isUpvote ? UPVOTE_POINTS : DOWNVOTE_POINTS;
+        int256 oldScore = _reputationScores[user];
         _reputationScores[user] += points;
-        
+
         emit ReputationChanged(
             user,
-            points,
+            oldScore,
+            _reputationScores[user],
             isUpvote ? "Received upvote" : "Received downvote"
         );
     }
@@ -107,22 +111,58 @@ contract ReputationModule is IReputation, Ownable {
         address user,
         bool isUpvote
     ) external onlyAuthorized validAddress(user) {
-        int256 points = isUpvote ? COMMENT_UPVOTE_POINTS : COMMENT_DOWNVOTE_POINTS;
+        int256 points = isUpvote
+            ? COMMENT_UPVOTE_POINTS
+            : COMMENT_DOWNVOTE_POINTS;
+        int256 oldScore = _reputationScores[user];
         _reputationScores[user] += points;
-        
+
         emit ReputationChanged(
             user,
-            points,
+            oldScore,
+            _reputationScores[user],
             isUpvote ? "Comment upvoted" : "Comment downvoted"
+        );
+    }
+
+    /// @notice Updates reputation based on comment feedback
+    /// @param user Address receiving the reputation change
+    /// @param isUpvote Whether the feedback was positive
+    function updateReputationFromComment(
+        address user,
+        bool isUpvote
+    ) external override onlyAuthorized {
+        int256 points = isUpvote ? COMMENT_UPVOTE_POINTS : COMMENT_DOWNVOTE_POINTS;
+        _reputationScores[user] += points;
+        emit ReputationChanged(
+            user,
+            _reputationScores[user] - points,
+            _reputationScores[user],
+            isUpvote ? "Comment upvoted" : "Comment downvoted"
+        );
+    }
+
+    /// @notice Updates reputation based on vote/comment feedback
+    /// @param user Address receiving the reputation change
+    /// @param isUpvote Whether the feedback was positive
+    function updateReputationFromVoteComment(
+        address user,
+        bool isUpvote
+    ) external override onlyAuthorized {
+        int256 points = isUpvote ? COMMENT_UPVOTE_POINTS : COMMENT_DOWNVOTE_POINTS;
+        _reputationScores[user] += points;
+        emit ReputationChanged(
+            user,
+            _reputationScores[user] - points,
+            _reputationScores[user],
+            isUpvote ? "Vote comment upvoted" : "Vote comment downvoted"
         );
     }
 
     // VIEW FUNCTIONS
 
     /// @inheritdoc IReputation
-    function getReputation(
-        address user
-    ) external view returns (int256) {
+    function getReputation(address user) external view returns (int256) {
         return _reputationScores[user];
     }
 
@@ -146,7 +186,9 @@ contract ReputationModule is IReputation, Ownable {
     /// @notice Adds an address as an authorized updater
     /// @param updater Address to authorize for reputation updates
     function addAuthorizedUpdater(address updater) external onlyOwner {
+        console.log("Adding authorized updater:", updater); // Log the updater's address
         _authorizedUpdaters[updater] = true;
+        console.log("Is updater authorized:", _authorizedUpdaters[updater]);
         emit UpdaterStatusChanged(updater, true);
     }
 
@@ -159,7 +201,9 @@ contract ReputationModule is IReputation, Ownable {
 
     /// @notice Initializes authorized updaters
     /// @param updaters An array of addresses to be authorized
-    function initializeAuthorizedUpdaters(address[] memory updaters) external onlyOwner {
+    function initializeAuthorizedUpdaters(
+        address[] memory updaters
+    ) external onlyOwner {
         require(msg.sender == owner(), "Caller is not the owner");
         emit UpdaterStatusChanged(msg.sender, true); // Log the caller
         emit UpdaterStatusChanged(owner(), true); // Log the owner address
@@ -179,11 +223,13 @@ contract ReputationModule is IReputation, Ownable {
     ) external onlyOwner validAddress(user) {
         // Ensure initial reputation is not set already
         require(_reputationScores[user] == 0, "Reputation already set");
-        
+
+        int256 oldScore = _reputationScores[user];
         _reputationScores[user] = initialReputation;
-        
+
         emit ReputationChanged(
             user,
+            oldScore,
             initialReputation,
             "Initial reputation set"
         );
