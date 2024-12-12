@@ -5,6 +5,7 @@ import "../interfaces/IComments.sol";
 import "../interfaces/IReputation.sol";
 import "../interfaces/IListing.sol";
 import "../interfaces/IErrors.sol";
+import "../interfaces/IVoting.sol";
 import "hardhat/console.sol";
 
 /// @title CommentsModule
@@ -29,6 +30,9 @@ contract CommentsModule is IComments, IErrors {
     /// @dev Reference to the reputation module
     IReputation private _reputationModule;
 
+    /// @dev Reference to the voting module
+    IVoting private _votingModule;
+
     /// @dev Counter for generating unique comment IDs
     uint256 private _nextCommentId;
 
@@ -47,6 +51,15 @@ contract CommentsModule is IComments, IErrors {
     /// @dev Maps vote IDs to their associated comment IDs
     mapping(uint256 => uint256) private _voteToComments;
 
+    /// @dev Minimum reputation required to vote
+    int256 private constant MIN_REPUTATION_TO_VOTE = -10;
+
+    /// @dev Maps vote comments to their IDs
+    mapping(uint256 => bool) private _isVoteComment;
+
+    /// @dev Maps comment IDs to vote IDs
+    mapping(uint256 => uint256) private _commentToVote;
+
     // EVENTS
     /// @notice Emitted when a vote comment is created
     event VoteCommentCreated(
@@ -57,11 +70,22 @@ contract CommentsModule is IComments, IErrors {
     );
 
     // CONSTRUCTOR
-    constructor(address capoepAddress, IReputation reputationModule) {
+    constructor(
+        address capoepAddress,
+        IReputation reputationModule,
+        IVoting votingModule
+    ) {
         _capoepAddress = capoepAddress;
         _reputationModule = reputationModule;
-        console.log("CommentsModule initialized with CAPOEP address:", capoepAddress);
-        console.log("CommentsModule initialized with ReputationModule at:", address(reputationModule));
+        _votingModule = votingModule;
+        console.log(
+            "CommentsModule initialized with CAPOEP address:",
+            capoepAddress
+        );
+        console.log(
+            "CommentsModule initialized with ReputationModule at:",
+            address(reputationModule)
+        );
     }
 
     // MODIFIERS
@@ -131,8 +155,14 @@ contract CommentsModule is IComments, IErrors {
     function addVoteComment(
         uint256 listingId,
         uint256 voteId,
-        string memory content
-    ) external onlyActiveListing(listingId) returns (uint256) {
+        string memory content,
+        address author
+    ) external override returns (uint256) {
+        require(
+            msg.sender == address(_votingModule),
+            "Only voting module can add vote comments"
+        );
+
         // Validate listing
         IListing listing = IListing(_capoepAddress);
         if (!listing.isListingActive(listingId)) revert ListingNotActive();
@@ -144,7 +174,7 @@ contract CommentsModule is IComments, IErrors {
 
         Comment memory newComment = Comment({
             id: commentId,
-            author: msg.sender,
+            author: author,
             content: content,
             timestamp: block.timestamp,
             parentId: 0,
@@ -155,9 +185,11 @@ contract CommentsModule is IComments, IErrors {
 
         _voteComments[listingId].push(newComment);
         _voteToComments[voteId] = commentId;
+        _isVoteComment[commentId] = true;
+        _commentToVote[commentId] = voteId;
 
-        emit VoteCommentCreated(listingId, voteId, commentId, msg.sender);
-        emit CommentCreated(listingId, commentId, msg.sender, 0);
+        emit VoteCommentCreated(listingId, voteId, commentId, author);
+        emit CommentCreated(listingId, commentId, author, 0);
 
         return commentId;
     }
@@ -168,6 +200,14 @@ contract CommentsModule is IComments, IErrors {
         uint256 commentId,
         bool isUpvote
     ) external override onlyActiveListing(listingId) {
+        // Check reputation only for comment voting
+        int256 reputation = _reputationModule.getReputation(msg.sender);
+
+        // Note: Users can still comment even with low reputation
+        // They just can't vote on listings or comments
+        if (reputation <= MIN_REPUTATION_TO_VOTE)
+            revert InsufficientReputation();
+
         // Validate listing
         IListing listing = IListing(_capoepAddress);
         if (!listing.isListingActive(listingId)) revert ListingNotActive();
@@ -180,7 +220,8 @@ contract CommentsModule is IComments, IErrors {
         Comment[] storage comments = _listingComments[listingId];
         for (uint i = 0; i < comments.length; i++) {
             if (comments[i].id == commentId) {
-                if (_commentVotes[commentId][msg.sender]) revert AlreadyVotedOnComment();
+                if (_commentVotes[commentId][msg.sender])
+                    revert AlreadyVotedOnComment();
                 if (isUpvote) {
                     comments[i].upvotes++;
                 } else {
@@ -197,7 +238,8 @@ contract CommentsModule is IComments, IErrors {
             Comment[] storage voteComments = _voteComments[listingId];
             for (uint i = 0; i < voteComments.length; i++) {
                 if (voteComments[i].id == commentId) {
-                    if (_commentVotes[commentId][msg.sender]) revert AlreadyVotedOnComment();
+                    if (_commentVotes[commentId][msg.sender])
+                        revert AlreadyVotedOnComment();
                     if (isUpvote) {
                         voteComments[i].upvotes++;
                     } else {
@@ -213,7 +255,7 @@ contract CommentsModule is IComments, IErrors {
         if (!found) revert CommentDoesNotExist();
 
         _commentVotes[commentId][msg.sender] = true;
-        
+
         // Update reputation
         _reputationModule.updateReputationFromCommentFeedback(
             commentAuthor,
@@ -340,5 +382,45 @@ contract CommentsModule is IComments, IErrors {
     /// @return The address of the CAPOEP contract
     function getCapoepAddress() external view returns (address) {
         return _capoepAddress;
+    }
+
+    // Add missing interface functions
+    function isVoteComment(uint256 commentId) external view override returns (bool) {
+        return _isVoteComment[commentId];
+    }
+
+    function getVoteCommentDetails(uint256 commentId) 
+        external 
+        view 
+        override
+        returns (
+            uint256 voteId,
+            address voter,
+            bool isAttestation
+        )
+    {
+        require(_isVoteComment[commentId], "Not a vote comment");
+        
+        // Find comment in vote comments array
+        Comment[] storage comments = _voteComments[commentId];
+        address commentAuthor;
+        bool found = false;
+        
+        for (uint i = 0; i < comments.length; i++) {
+            if (comments[i].id == commentId) {
+                commentAuthor = comments[i].author;
+                found = true;
+                break;
+            }
+        }
+        
+        require(found, "Comment not found");
+        uint256 vId = _commentToVote[commentId];
+        
+        return (
+            vId,
+            commentAuthor,
+            IVoting(address(_votingModule)).getVoteType(vId)
+        );
     }
 }
