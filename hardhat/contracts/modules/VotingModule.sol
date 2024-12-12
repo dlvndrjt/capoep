@@ -3,195 +3,97 @@ pragma solidity ^0.8.22;
 
 import "../interfaces/IVoting.sol";
 import "../interfaces/IListing.sol";
+import "../interfaces/IComments.sol";
 import "../interfaces/IReputation.sol";
-import "../interfaces/IErrors.sol";
-import "../libraries/ListingTypes.sol";
-import "hardhat/console.sol";
 
-/// @title VotingModule
-/// @notice Implements voting functionality for CAPOEP
-/// @dev Handles attestations, refutations, and vote feedback
-contract VotingModule is IVoting, IErrors {
-    // CUSTOM ERRORS
-    error AlreadyVoted();
-    error VoteDoesNotExist();
-    error EmptyVoteComment();
-    error CannotVoteOwnListing();
-    error InsufficientReputation(string reason);
-    error CannotVoteMintedListing();
-
-    // CONSTANTS
-    /// @dev Minimum reputation required to vote
-    int256 public constant MIN_REPUTATION_TO_VOTE = -10;
-
-    /// @dev Reputation change for an attest vote
-    int256 public constant ATTEST_VOTE_REPUTATION = 5;
-    
-    /// @dev Reputation change for a contest vote
-    int256 public constant CONTEST_VOTE_REPUTATION = -5;
-
+contract VotingModule is IVoting {
     // STATE VARIABLES
-    /// @dev Reference to the reputation module
-    IReputation private _reputationModule;
-
-    /// @dev Maps listing IDs to voter addresses to their votes
-    mapping(uint256 => mapping(address => IVoting.Vote)) private _votes;
-
-    /// @dev Maps listing IDs to vote counts
-    mapping(uint256 => IVoting.VoteCount) private _voteCounts;
-
-    /// @dev Maps listing IDs to arrays of voter addresses
+    IListing private immutable _listingModule;
+    IComments private immutable _commentsModule;
+    IReputation private immutable _reputationModule;
+    
+    mapping(address => mapping(uint256 => bool)) private _hasVoted;
     mapping(uint256 => address[]) private _listingVoters;
-
-    // EVENTS
-    /// @notice Emitted when vote counts are updated
-    event VoteCountsUpdated(
-        uint256 indexed listingId,
-        uint256 attestCount,
-        uint256 contestCount
-    );
-
-    /// @notice Emitted when a voting error occurs
-    event VotingError(
-        address indexed voter, 
-        int256 reputation, 
-        string reason
-    );
-
-    // CONSTRUCTOR
-    constructor(IReputation reputationModule) {
-        _reputationModule = reputationModule;
-        console.log("VotingModule initialized with reputation module at:", address(reputationModule));
+    uint256 private _nextVoteId;
+    
+    // Add constants at the top
+    int256 private constant MIN_REPUTATION_TO_VOTE = -10;
+    
+    // Add state variable to track vote types
+    mapping(uint256 => bool) private _voteTypes; // true for attestation, false for refutation
+    
+    constructor(
+        address listingModule,
+        address commentsModule,
+        address reputationModule
+    ) {
+        _listingModule = IListing(listingModule);
+        _commentsModule = IComments(commentsModule);
+        _reputationModule = IReputation(reputationModule);
     }
-
-    // MODIFIERS
-    /// @dev Ensures voter has sufficient reputation
-    modifier sufficientReputation() {
-        int256 voterReputation = _reputationModule.getReputation(msg.sender);
-        if (voterReputation <= MIN_REPUTATION_TO_VOTE)
-            revert InsufficientReputation("Insufficient reputation to vote");
-        _;
-    }
-
-    // CORE FUNCTIONS
-
-    /// @dev Helper function to convert uint256 to string
-    function _uintToString(uint256 value) internal pure returns (string memory) {
-        if (value == 0) {
-            return "0";
-        }
-        
-        uint256 temp = value;
-        uint256 digits;
-        while (temp != 0) {
-            digits++;
-            temp /= 10;
-        }
-        
-        bytes memory buffer = new bytes(digits);
-        while (value != 0) {
-            digits -= 1;
-            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
-            value /= 10;
-        }
-        
-        return string(buffer);
-    }
-
-    /// @inheritdoc IVoting
+    
     function castVote(
-        uint256 listingId, 
-        bool isAttest, 
-        string memory comment
-    ) external override {
-        // Validate vote parameters
-        require(bytes(comment).length > 0, "Comment cannot be empty");
-
-        // Check reputation threshold
-        int256 voterReputation = _reputationModule.getReputation(msg.sender);
-        require(voterReputation >= MIN_REPUTATION_TO_VOTE, "Insufficient reputation to vote");
-
-        // Check if vote already exists
-        if (_votes[listingId][msg.sender].timestamp != 0) {
-            revert AlreadyVoted();
-        }
-
-        // Record vote
-        _votes[listingId][msg.sender] = IVoting.Vote({
-            isAttest: isAttest,
-            comment: comment,
-            timestamp: block.timestamp,
-            upvotes: 0,
-            downvotes: 0
-        });
-
-        // Add voter to list
-        _listingVoters[listingId].push(msg.sender);
-
-        // Update vote counts
-        IVoting.VoteCount storage voteCount = _voteCounts[listingId];
-        if (isAttest) {
-            voteCount.attestCount++;
-        } else {
-            voteCount.contestCount++;
-        }
-
-        // Update voter's reputation based on vote
-        try _reputationModule.updateReputation(
-            msg.sender, 
-            isAttest ? ATTEST_VOTE_REPUTATION : CONTEST_VOTE_REPUTATION, 
-            string(abi.encodePacked("Vote on listing ", _uintToString(listingId)))
-        ) {} catch Error(string memory reason) {
-            emit VotingError(msg.sender, voterReputation, reason);
-        }
-    }
-
-    /// @inheritdoc IVoting
-    function giveVoteFeedback(
         uint256 listingId,
+        bool isAttestation,
+        string calldata comment
+    ) external returns (uint256) {
+        if (bytes(comment).length == 0) revert EmptyVoteComment();
+        if (!_listingModule.isListingActive(listingId)) revert ListingNotActive();
+        if (_reputationModule.getReputation(msg.sender) <= MIN_REPUTATION_TO_VOTE) 
+            revert InsufficientReputation();
+        if (_hasVoted[msg.sender][listingId]) revert AlreadyVoted();
+        
+        IListing.Listing memory listing = _listingModule.getListing(listingId);
+        if (listing.creator == msg.sender) revert CannotVoteOwnListing();
+        
+        // Record vote and add to voter list
+        _hasVoted[msg.sender][listingId] = true;
+        _listingVoters[listingId].push(msg.sender);
+        
+        // Update listing counts
+        _listingModule.updateListingCounts(listingId, isAttestation);
+        
+        // Create vote comment and emit event
+        uint256 commentId = _commentsModule.addVoteComment(
+            listingId,
+            _nextVoteId,
+            comment,
+            msg.sender
+        );
+        
+        _voteTypes[_nextVoteId] = isAttestation;
+        _nextVoteId++;
+        
+        // Update reputation
+        _reputationModule.updateReputationFromVote(listing.creator, isAttestation);
+        
+        emit VoteCast(listingId, msg.sender, isAttestation, comment);
+        return commentId;
+    }
+
+    function hasVoted(
         address voter,
-        bool isUpvote
-    ) external override {
-        IVoting.Vote storage vote = _votes[listingId][voter];
-        if (vote.timestamp == 0) revert VoteDoesNotExist();
-
-        // Prevent self-voting
-        if (voter == msg.sender) revert UnauthorizedAccess();
-
-        // Update vote feedback counts
-        if (isUpvote) {
-            vote.upvotes++;
-        } else {
-            vote.downvotes++;
-        }
-
-        // Update reputation for vote owner
-        _reputationModule.updateReputationFromFeedback(voter, isUpvote);
-
-        emit VoteFeedback(listingId, voter, msg.sender, isUpvote);
-    }
-
-    // VIEW FUNCTIONS
-
-    /// @inheritdoc IVoting
-    function getVote(
-        uint256 listingId, 
-        address voter
-    ) external view override returns (IVoting.Vote memory) {
-        return _votes[listingId][voter];
-    }
-
-    /// @inheritdoc IVoting
-    function getVoteCount(
         uint256 listingId
-    ) external view override returns (IVoting.VoteCount memory) {
-        return _voteCounts[listingId];
+    ) external view returns (bool) {
+        return _hasVoted[voter][listingId];
     }
 
-    /// @inheritdoc IVoting
-    function getVoters(
-        uint256 listingId
-    ) external view override returns (address[] memory) {
+    function getVoteCount(uint256 listingId) external view returns (uint256 attestCount, uint256 refuteCount) {
+        return _listingModule.getListingCounts(listingId);
+    }
+
+    function getVoterList(uint256 listingId) external view returns (address[] memory) {
         return _listingVoters[listingId];
+    }
+
+    // Add these errors
+    error ListingNotActive();
+    error InsufficientReputation();
+    error AlreadyVoted();
+    error CannotVoteOwnListing();
+
+    // Add the missing function
+    function getVoteType(uint256 voteId) external view override returns (bool) {
+        return _voteTypes[voteId];
     }
 }
