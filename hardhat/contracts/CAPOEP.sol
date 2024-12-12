@@ -7,138 +7,260 @@ import {ERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/
 import {ERC721Pausable} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Pausable.sol";
 import {ERC721URIStorage} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-
-import "./modules/ListingModule.sol";
-import "./modules/VotingModule.sol";
-import "./modules/CommentsModule.sol";
-import "./modules/ReputationModule.sol";
-import "./modules/MetadataModule.sol";
-import {IListing} from "./interfaces/IListing.sol";
-import {IVoting} from "./interfaces/IVoting.sol";
-import "hardhat/console.sol";
+import "./interfaces/IListing.sol";
+import "./interfaces/IMetadata.sol";
+import "./interfaces/IVoting.sol";
+import "./interfaces/IComments.sol";
+import "./interfaces/IReputation.sol";
 
 /// @title CAPOEP - Community Attested Proof of Education Protocol
-/// @notice Main contract integrating all CAPOEP modules for educational achievement verification
-/// @dev Implements ERC721 with module-based functionality for listings, voting, comments, and reputation
-/// @custom:security-contact security@capoep.com
-contract CAPOEP is ERC721, ERC721Enumerable, ERC721URIStorage, ERC721Pausable, ERC721Burnable, Ownable {
+/// @notice Main contract handling NFT minting and module coordination
+/// @dev Implements ERC721 with multiple extensions
+contract CAPOEP is
+    ERC721,
+    ERC721Burnable,
+    ERC721Enumerable,
+    ERC721Pausable,
+    ERC721URIStorage,
+    Ownable
+{
+    // ERRORS
+    error ListingCannotBeMinted();
+    error UnauthorizedMint();
+    error InvalidModuleAddress();
+
     // STATE VARIABLES
-
-    /// @dev Reference to the metadata generation module
-    MetadataModule private _metadata;
-
-    /// @dev Counter for generating unique token IDs
+    /// @dev Counter for token IDs
     uint256 private _nextTokenId;
 
-    /// @dev Storage for listing vote counts
-    mapping(uint256 => ListingTypes.ListingCount) private _listingCounts;
+    /// @dev Module references
+    IListing public listingModule;
+    IMetadata public metadataModule;
+    IVoting public votingModule;
+    IComments public commentsModule;
+    IReputation public reputationModule;
 
-    // State variables for modules
-    ListingModule private _listingModule;
-    VotingModule private _votingModule;
-    CommentsModule private _commentsModule;
-    ReputationModule private _reputationModule;
+    // EVENTS
+    event ListingMinted(uint256 indexed listingId, uint256 indexed tokenId);
+    event ModulesUpdated(
+        address listingModule,
+        address metadataModule,
+        address votingModule,
+        address commentsModule,
+        address reputationModule
+    );
 
     // CONSTRUCTOR
-
-    /// @notice Initializes the CAPOEP contract with required addresses
-    /// @dev Sets up ERC721 metadata and connects to the metadata module
-    /// @param initialOwner Address that will own the contract
     constructor(
-        address initialOwner
-    ) ERC721("CAPOEP", "CAPOEP") 
-      Ownable(initialOwner) {
-        console.log("Initializing CAPOEP with owner:", initialOwner);
-        // Initialize modules
-        _initializeModules(initialOwner);
-    }
+        address initialOwner,
+        address _listingModule,
+        address _metadataModule,
+        address _votingModule,
+        address _commentsModule,
+        address _reputationModule
+    ) ERC721("CAPOEP", "CAPOEP") Ownable(initialOwner) {
+        if (_listingModule == address(0)) revert InvalidModuleAddress();
+        if (_metadataModule == address(0)) revert InvalidModuleAddress();
+        if (_votingModule == address(0)) revert InvalidModuleAddress();
+        if (_commentsModule == address(0)) revert InvalidModuleAddress();
+        if (_reputationModule == address(0)) revert InvalidModuleAddress();
 
-    /// @dev Internal function to initialize modules
-    function _initializeModules(address initialOwner) internal {
-        console.log("Initializing modules...");
-        _metadata = new MetadataModule();
-        console.log("MetadataModule initialized at:", address(_metadata));
-        _listingModule = new ListingModule();
-        console.log("ListingModule initialized at:", address(_listingModule));
-        _reputationModule = new ReputationModule(initialOwner);
-        console.log("ReputationModule initialized at:", address(_reputationModule));
-        _votingModule = new VotingModule(_reputationModule);
-        console.log("VotingModule initialized at:", address(_votingModule));
-        _commentsModule = new CommentsModule(address(this), _reputationModule);
-        console.log("CommentsModule initialized at:", address(_commentsModule));
+        listingModule = IListing(_listingModule);
+        metadataModule = IMetadata(_metadataModule);
+        votingModule = IVoting(_votingModule);
+        commentsModule = IComments(_commentsModule);
+        reputationModule = IReputation(_reputationModule);
 
-        // Initialize authorized updaters
-        address[] memory updaters = new address[](3);
-        updaters[0] = address(this);
-        updaters[1] = address(_votingModule);
-        updaters[2] = initialOwner;
-        _reputationModule.initializeAuthorizedUpdaters(updaters);
-
+        emit ModulesUpdated(
+            _listingModule,
+            _metadataModule,
+            _votingModule,
+            _commentsModule,
+            _reputationModule
+        );
     }
 
     // CORE FUNCTIONS
 
-    /// @notice Mints an NFT from a verified educational listing
-    /// @dev Requires listing to have sufficient attestations and be in active state
+    /// @notice Create a new listing
+    /// @param title The title of the listing
+    /// @param details The details of the listing
+    /// @param proofs Array of proof URIs
+    /// @param category The category of the listing
+    function createListing(
+        string memory title,
+        string memory details,
+        string[] memory proofs,
+        string memory category
+    ) external returns (uint256) {
+        return listingModule.createListing(title, details, proofs, category);
+    }
+
+    /// @notice Cast a vote on a listing
+    /// @param listingId The ID of the listing to vote on
+    /// @param isAttest True for attestation, false for refutation
+    /// @param comment Required explanation for the vote
+    function castVote(
+        uint256 listingId,
+        bool isAttest,
+        string calldata comment
+    ) external returns (uint256) {
+        return votingModule.castVote(listingId, isAttest, comment);
+    }
+
+    /// @notice Mint NFT from a verified listing
     /// @param listingId The ID of the listing to mint from
     function mintFromListing(uint256 listingId) external {
-        // Get listing data and verify ownership
-        IListing.Listing memory listing = _listingModule.getListing(listingId);
-        require(msg.sender == listing.creator, "Only creator can mint");
+        if (!listingModule.canBeMinted(listingId))
+            revert ListingCannotBeMinted();
 
-        // Verify listing meets minting requirements
-        require(_canBeMinted(listingId), "Not enough attestations");
-        require(
-            listing.state == IListing.ListingState.Active,
-            "Listing must be active"
-        );
+        IListing.Listing memory listing = listingModule.getListing(listingId);
+        if (listing.creator != msg.sender) revert UnauthorizedMint();
 
-        // Mint new token
         uint256 tokenId = _nextTokenId++;
         _safeMint(msg.sender, tokenId);
+        _setTokenURI(tokenId, metadataModule.generateTokenURI(tokenId));
 
-        // Generate and set metadata URI
-        string memory uri = _metadata.generateTokenURI(tokenId);
-        _setTokenURI(tokenId, uri);
+        listingModule._setListingMinted(listingId);
 
-        // Update listing state to minted
-        _updateListingMinted(listingId);
+        emit ListingMinted(listingId, tokenId);
     }
 
-    /// @dev Internal method to check if a listing can be minted
-    function _canBeMinted(uint256 listingId) internal view returns (bool) {
-        return _listingCounts[listingId].attestCount >= 2;
+    /// @notice Get all details about a listing
+    /// @param listingId The ID of the listing
+    /// @return listing The complete listing struct
+    /// @return attestCount Number of attestations
+    /// @return refuteCount Number of refutations
+    /// @return voters Array of addresses that voted on the listing
+    function getListingDetails(
+        uint256 listingId
+    )
+        external
+        view
+        returns (
+            IListing.Listing memory listing,
+            uint256 attestCount,
+            uint256 refuteCount,
+            address[] memory voters
+        )
+    {
+        listing = listingModule.getListing(listingId);
+        (attestCount, refuteCount) = votingModule.getVoteCount(listingId);
+        voters = votingModule.getVoterList(listingId);
     }
 
-    /// @dev Internal method to update listing minted state
-    function _updateListingMinted(uint256 listingId) internal {
-        // Assuming there's a way to update listing state in ListingModule
-        // You may need to add a method in ListingModule to do this
-        // For now, this is a placeholder
+    /// @notice Get comments for a listing
+    /// @param listingId The ID of the listing
+    /// @return Array of comments
+    function getListingComments(
+        uint256 listingId
+    ) external view returns (IComments.Comment[] memory) {
+        return commentsModule.getListingComments(listingId);
+    }
+
+    /// @notice Get user's reputation
+    /// @param user The address to check
+    /// @return The user's reputation score
+    function getUserReputation(address user) external view returns (int256) {
+        return reputationModule.getReputation(user);
+    }
+
+    /// @notice Check if a user can vote
+    /// @param user The address to check
+    /// @return Whether the user can vote
+    function canUserVote(address user) external view returns (bool) {
+        return reputationModule.getReputation(user) > -10;
+    }
+
+    /// @notice Add a comment to a listing
+    /// @param listingId The listing ID
+    /// @param content The comment content
+    /// @param parentId ID of parent comment (0 for top-level)
+    function addComment(
+        uint256 listingId,
+        string calldata content,
+        uint256 parentId
+    ) external returns (uint256) {
+        return commentsModule.addComment(listingId, content, parentId);
+    }
+
+    /// @notice Vote on a comment
+    /// @param listingId The listing ID
+    /// @param commentId The comment ID to vote on
+    /// @param isUpvote True for upvote, false for downvote
+    function voteOnComment(
+        uint256 listingId,
+        uint256 commentId,
+        bool isUpvote
+    ) external {
+        commentsModule.voteOnComment(listingId, commentId, isUpvote);
     }
 
     // ADMIN FUNCTIONS
 
-    /// @notice Pauses all token transfers and minting
-    /// @dev Can only be called by contract owner
-    function pause() public onlyOwner {
-        _pause();
+    /// @notice Update module addresses
+    /// @dev Only callable by owner
+    function updateModules(
+        address _listingModule,
+        address _metadataModule,
+        address _votingModule,
+        address _commentsModule,
+        address _reputationModule
+    ) external onlyOwner {
+        if (_listingModule == address(0)) revert InvalidModuleAddress();
+        if (_metadataModule == address(0)) revert InvalidModuleAddress();
+        if (_votingModule == address(0)) revert InvalidModuleAddress();
+        if (_commentsModule == address(0)) revert InvalidModuleAddress();
+        if (_reputationModule == address(0)) revert InvalidModuleAddress();
+
+        listingModule = IListing(_listingModule);
+        metadataModule = IMetadata(_metadataModule);
+        votingModule = IVoting(_votingModule);
+        commentsModule = IComments(_commentsModule);
+        reputationModule = IReputation(_reputationModule);
+
+        emit ModulesUpdated(
+            _listingModule,
+            _metadataModule,
+            _votingModule,
+            _commentsModule,
+            _reputationModule
+        );
     }
 
-    /// @notice Unpauses token transfers and minting
-    /// @dev Can only be called by contract owner
-    function unpause() public onlyOwner {
-        _unpause();
-    }
+    // OVERRIDES
 
-    // OVERRIDE FUNCTIONS
-
-    /// @dev Base URI for computing tokenURI
     function _baseURI() internal pure override returns (string memory) {
-        return "https://baseuri";
+        return "ipfs://";
     }
 
-    /// @dev Required override for ERC721 token transfers
+    function supportsInterface(
+        bytes4 interfaceId
+    )
+        public
+        view
+        override(ERC721, ERC721Enumerable, ERC721URIStorage)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+
+    /// @dev Required override for ERC721URIStorage
+    function tokenURI(
+        uint256 tokenId
+    ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+        return super.tokenURI(tokenId);
+    }
+
+    /// @dev Required override for ERC721Enumerable
+    function _increaseBalance(
+        address account,
+        uint128 value
+    ) internal override(ERC721, ERC721Enumerable) {
+        super._increaseBalance(account, value);
+    }
+
+    /// @dev Required override for ERC721Enumerable and ERC721Pausable
     function _update(
         address to,
         uint256 tokenId,
@@ -151,63 +273,58 @@ contract CAPOEP is ERC721, ERC721Enumerable, ERC721URIStorage, ERC721Pausable, E
         return super._update(to, tokenId, auth);
     }
 
-    /// @dev Required override for ERC721 balance tracking
-    function _increaseBalance(
-        address account,
-        uint128 value
-    ) internal override(ERC721, ERC721Enumerable) {
-        super._increaseBalance(account, value);
+    /// @notice Pause token transfers
+    /// @dev Only callable by owner
+    function pause() external onlyOwner {
+        _pause();
     }
 
-    /// @dev Returns the Uniform Resource Identifier (URI) for `tokenId` token
-    function tokenURI(
-        uint256 tokenId
-    ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
-        return super.tokenURI(tokenId);
+    /// @notice Unpause token transfers
+    /// @dev Only callable by owner
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
-    /// @dev ERC165 interface support
-    function supportsInterface(
-        bytes4 interfaceId
-    )
-        public
-        view
-        override(ERC721, ERC721Enumerable, ERC721URIStorage)
-        returns (bool)
-    {
-        return super.supportsInterface(interfaceId);
+    // Additional required overrides...
+
+    /// @notice Get total supply of minted tokens
+    /// @return The total number of tokens minted
+    function totalMinted() external view returns (uint256) {
+        return _nextTokenId;
     }
 
-    /// Cast a vote on a listing
-    function castVote(
-        uint256 listingId,
-        bool isAttest,
-        string memory comment
-    ) public virtual {
-        // Call parent implementation first
-        _votingModule.castVote(listingId, isAttest, comment);
-        
-        // Update counts after vote is cast
-        if (isAttest) {
-            _listingCounts[listingId].attestCount++;
-        } else {
-            _listingCounts[listingId].refuteCount++;
+    /// @notice Check if a listing exists and can be voted on
+    /// @param listingId The listing ID to check
+    /// @return True if listing exists and is active
+    function canVoteOnListing(uint256 listingId) external view returns (bool) {
+        return listingModule.isListingActive(listingId);
+    }
+
+    /// @notice Get all tokens owned by an address
+    /// @param owner The address to check
+    /// @return Array of token IDs owned by the address
+    function getTokensOfOwner(
+        address owner
+    ) external view returns (uint256[] memory) {
+        uint256 tokenCount = balanceOf(owner);
+        uint256[] memory tokens = new uint256[](tokenCount);
+        for (uint256 i = 0; i < tokenCount; i++) {
+            tokens[i] = tokenOfOwnerByIndex(owner, i);
         }
+        return tokens;
     }
 
-    /// Give feedback on a vote
-    function giveVoteFeedback(
-        uint256 listingId,
-        address voter,
-        bool isUpvote
-    ) external {
-        // Use the module's implementation
-        _votingModule.giveVoteFeedback(listingId, voter, isUpvote);
+    /// @notice Emergency function to handle stuck tokens
+    /// @dev Only callable by owner
+    /// @param tokenId The ID of the stuck token
+    function emergencyBurn(uint256 tokenId) external onlyOwner {
+        _burn(tokenId);
     }
 
-    /// @notice Get the ReputationModule address
-    /// @return Address of the ReputationModule
-    function getReputationModule() external view returns (address) {
-        return address(_reputationModule);
+    /// @notice Emergency pause all modules
+    /// @dev Only callable by owner
+    function emergencyPause() external onlyOwner {
+        _pause();
+        // Additional module-specific pause logic if needed
     }
 }
