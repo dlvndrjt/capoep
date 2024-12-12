@@ -3,6 +3,7 @@ pragma solidity ^0.8.22;
 
 import "../interfaces/IMetadata.sol";
 import "../Base64.sol";
+import "../interfaces/IListing.sol";
 
 /// @title MetadataModule
 /// @notice Implements dynamic NFT metadata generation for CAPOEP
@@ -12,13 +13,14 @@ contract MetadataModule is IMetadata {
 
     error TokenDoesNotExist();
     error InvalidTokenId();
+    error InvalidAddress();
 
     // CORE FUNCTIONS
     /// @inheritdoc IMetadata
     function generateTokenURI(
         uint256 tokenId
-    ) external pure override returns (string memory) {
-        MetadataAttribute[] memory attributes = getAttributes();
+    ) external view override returns (string memory) {
+        MetadataAttribute[] memory attributes = getAttributes(tokenId);
         string memory svg = generateSVG(tokenId);
 
         string memory json = string(
@@ -46,7 +48,7 @@ contract MetadataModule is IMetadata {
     /// @inheritdoc IMetadata
     function generateSVG(
         uint256 tokenId
-    ) public pure override returns (string memory) {
+    ) public view override returns (string memory) {
         return
             string(
                 abi.encodePacked(
@@ -63,18 +65,28 @@ contract MetadataModule is IMetadata {
             );
     }
 
-    /// @inheritdoc IMetadata
-    function getAttributes()
-        public
-        pure
-        override
-        returns (MetadataAttribute[] memory)
-    {
-        MetadataAttribute[] memory attributes = new MetadataAttribute[](3);
+    /// @notice Get attributes for a token
+    /// @param tokenId The ID of the token
+    /// @return Array of metadata attributes
+    function getAttributes(
+        uint256 tokenId
+    ) public view returns (MetadataAttribute[] memory) {
+        IListing.Listing memory listing = _listingModule.getListing(tokenId);
 
-        attributes[0] = MetadataAttribute("Type", "Education");
-        attributes[1] = MetadataAttribute("Level", "Advanced");
-        attributes[2] = MetadataAttribute("Attestations", "2");
+        MetadataAttribute[] memory attributes = new MetadataAttribute[](5);
+        attributes[0] = MetadataAttribute("Category", listing.category);
+        attributes[1] = MetadataAttribute("Title", listing.title);
+        attributes[2] = MetadataAttribute(
+            "Creator",
+            addressToString(listing.creator)
+        );
+
+        (uint256 attestCount,) = _listingModule.getListingCounts(tokenId);
+        attributes[3] = MetadataAttribute(
+            "Attestations",
+            _toString(attestCount)
+        );
+        attributes[4] = MetadataAttribute("Status", "Verified");
 
         return attributes;
     }
@@ -105,8 +117,8 @@ contract MetadataModule is IMetadata {
     }
 
     /// @dev Generates SVG elements for attributes
-    function _generateSVGAttributes() internal pure returns (string memory) {
-        MetadataAttribute[] memory attributes = getAttributes();
+    function _generateSVGAttributes() internal view returns (string memory) {
+        MetadataAttribute[] memory attributes = getAttributes(0);
         string memory elements = "";
         uint256 yPos = 30;
 
@@ -149,5 +161,36 @@ contract MetadataModule is IMetadata {
         }
 
         return string(buffer);
+    }
+
+    // STATE VARIABLES
+    IListing private immutable _listingModule;
+
+    // CONSTRUCTOR
+    constructor(address listingModule) {
+        if (listingModule == address(0)) revert InvalidAddress();
+        _listingModule = IListing(listingModule);
+    }
+
+    // HELPER FUNCTIONS
+    function addressToString(
+        address addr
+    ) internal pure returns (string memory) {
+        bytes memory buffer = new bytes(40);
+        for (uint256 i = 0; i < 20; i++) {
+            bytes1 b = bytes1(
+                uint8(uint256(uint160(addr)) / (2 ** (8 * (19 - i))))
+            );
+            bytes1 hi = bytes1(uint8(b) / 16);
+            bytes1 lo = bytes1(uint8(b) - 16 * uint8(hi));
+            buffer[2 * i] = char(hi);
+            buffer[2 * i + 1] = char(lo);
+        }
+        return string(buffer);
+    }
+
+    function char(bytes1 b) internal pure returns (bytes1) {
+        if (uint8(b) < 10) return bytes1(uint8(b) + 0x30);
+        else return bytes1(uint8(b) + 0x57);
     }
 }
