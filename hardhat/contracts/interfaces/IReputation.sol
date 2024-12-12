@@ -9,9 +9,15 @@ interface IReputation {
 
     /// @notice Emitted when a user's reputation changes
     /// @param user Address of the user
-    /// @param change Point change amount (positive or negative)
+    /// @param oldScore Previous reputation score
+    /// @param newScore New reputation score
     /// @param reason Description of why the change occurred
-    event ReputationChanged(address indexed user, int256 change, string reason);
+    event ReputationChanged(
+        address indexed user,
+        int256 oldScore,
+        int256 newScore,
+        string reason
+    );
 
     // CORE FUNCTIONS
 
@@ -38,7 +44,23 @@ interface IReputation {
     /// @notice Updates a user's reputation based on comment feedback
     /// @param user The address of the user whose reputation is being updated
     /// @param isUpvote Whether the feedback is positive (true) or negative (false)
-    function updateReputationFromCommentFeedback(address user, bool isUpvote) external;
+    function updateReputationFromCommentFeedback(
+        address user,
+        bool isUpvote
+    ) external;
+
+    /// @notice Updates a user's reputation based on comment feedback
+    /// @param user The address of the user whose reputation is being updated
+    /// @param isUpvote Whether the feedback is positive (true) or negative (false)
+    function updateReputationFromComment(address user, bool isUpvote) external;
+
+    /// @notice Updates a user's reputation based on vote comment feedback
+    /// @param user The address of the user whose reputation is being updated
+    /// @param isUpvote Whether the feedback is positive (true) or negative (false)
+    function updateReputationFromVoteComment(
+        address user,
+        bool isUpvote
+    ) external;
 
     // VIEW FUNCTIONS
 

@@ -99,4 +99,40 @@ interface IListing {
     /// @notice Gets the total number of listings created
     /// @return The total number of listings
     function getTotalListings() external view returns (uint256);
+
+    /// @notice Checks if a listing can be minted
+    /// @param listingId The ID of the listing to check
+    /// @return bool indicating if listing can be minted
+    function canBeMinted(uint256 listingId) external view returns (bool);
+
+    /// @notice Updates listing counts
+    /// @param listingId The ID of the listing to update
+    /// @param isAttestation Whether the update is for an attestation
+    function updateListingCounts(uint256 listingId, bool isAttestation) external;
+
+    /// @notice Sets a listing as minted
+    /// @param listingId The ID of the listing to set as minted
+    function _setListingMinted(uint256 listingId) external;
+
+    /// @notice Gets the vote counts for a listing
+    /// @param listingId The ID of the listing to get vote counts for
+    /// @return attestCount The number of attest votes for the listing
+    /// @return refuteCount The number of refute votes for the listing
+    function getListingCounts(uint256 listingId) 
+        external 
+        view 
+        returns (uint256 attestCount, uint256 refuteCount);
+
+    /// @notice Get the version history of a listing
+    /// @param listingId The ID of the listing
+    /// @return Array of listing IDs representing the version chain
+    function getVersionHistory(uint256 listingId) 
+        external 
+        view 
+        returns (uint256[] memory);
+
+    /// @notice Check if a listing has any votes
+    /// @param listingId The ID of the listing
+    /// @return True if the listing has any votes
+    function hasVotes(uint256 listingId) external view returns (bool);
 }

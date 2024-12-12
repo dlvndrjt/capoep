@@ -28,6 +28,7 @@ interface IMetadata {
     function generateSVG(uint256 tokenId) external view returns (string memory);
 
     /// @notice Gets metadata attributes
+    /// @param tokenId The ID of the token
     /// @return Array of metadata attributes
-    function getAttributes() external pure returns (MetadataAttribute[] memory);
+    function getAttributes(uint256 tokenId) external view returns (MetadataAttribute[] memory);
 }

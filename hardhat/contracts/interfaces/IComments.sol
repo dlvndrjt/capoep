@@ -57,6 +57,19 @@ interface IComments {
         uint256 parentId
     ) external returns (uint256);
 
+    /// @notice Add a vote comment to a listing
+    /// @param listingId The ID of the listing to comment on
+    /// @param voteId The ID of the vote
+    /// @param content The vote comment content
+    /// @param author The address of the vote comment author
+    /// @return commentId The ID of the created vote comment
+    function addVoteComment(
+        uint256 listingId,
+        uint256 voteId,
+        string memory content,
+        address author
+    ) external returns (uint256);
+
     /// @notice Vote on an existing comment
     /// @param listingId The listing ID
     /// @param commentId The comment ID
@@ -75,4 +88,23 @@ interface IComments {
     function getListingComments(
         uint256 listingId
     ) external view returns (Comment[] memory);
+
+    /// @notice Check if a comment is a vote comment
+    /// @param commentId The ID of the comment
+    /// @return True if the comment is a vote comment, false otherwise
+    function isVoteComment(uint256 commentId) external view returns (bool);
+
+    /// @notice Get vote comment details
+    /// @param commentId The ID of the comment
+    /// @return voteId The ID of the vote
+    /// @return voter The address of the voter
+    /// @return isAttestation Whether this is an attestation
+    function getVoteCommentDetails(uint256 commentId) 
+        external 
+        view 
+        returns (
+            uint256 voteId,
+            address voter,
+            bool isAttestation
+        );
 }
