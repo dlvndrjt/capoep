@@ -3,7 +3,53 @@ pragma solidity ^0.8.22;
 
 import "../interfaces/IListing.sol";
 
-contract MockListing is IListing {
+abstract contract MockListing is IListing {
+    mapping(uint256 => uint256) private _attestCounts;
+    mapping(uint256 => uint256) private _refuteCounts;
+    mapping(uint256 => uint256[]) private _versionHistory;
+    mapping(uint256 => bool) private _hasVotesCasted;
+
+    function _setListingMinted(uint256 listingId) external override {
+        // Mock implementation
+    }
+
+    function canBeMinted(
+        uint256 /* listingId */
+    ) external pure override returns (bool) {
+        return true; // Mock implementation
+    }
+
+    function getListingCounts(uint256 listingId) 
+        external 
+        view 
+        override 
+        returns (uint256 attestCount, uint256 refuteCount) 
+    {
+        return (_attestCounts[listingId], _refuteCounts[listingId]);
+    }
+
+    function getVersionHistory(uint256 listingId) 
+        external 
+        view 
+        override 
+        returns (uint256[] memory) 
+    {
+        return _versionHistory[listingId];
+    }
+
+    function hasVotes(uint256 listingId) external view override returns (bool) {
+        return _hasVotesCasted[listingId];
+    }
+
+    function updateListingCounts(uint256 listingId, bool isAttestation) external override {
+        if (isAttestation) {
+            _attestCounts[listingId]++;
+        } else {
+            _refuteCounts[listingId]++;
+        }
+        _hasVotesCasted[listingId] = true;
+    }
+
     function isListingActive(uint256 /* _listingId */) external pure returns (bool) {
         return true;
     }
