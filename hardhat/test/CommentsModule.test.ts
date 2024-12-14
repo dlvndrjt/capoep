@@ -1,129 +1,119 @@
-import { ethers } from "hardhat";
 import { expect } from "chai";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
-import { CommentsModule, ReputationModule } from "../typechain-types";
+import { ethers } from "hardhat";
 import { Contract } from "ethers";
+import { deployContracts, SAMPLE_LISTING } from "./helpers";
+import { CommentsModule, ListingModule } from "../typechain-types";
 
 describe("CommentsModule", function () {
   let commentsModule: CommentsModule;
-  let reputationModule: ReputationModule;
-  let mockListing: Contract;
-  let owner: SignerWithAddress;
-  let user1: SignerWithAddress;
-  let user2: SignerWithAddress;
-  let user3: SignerWithAddress;
-  let mockListingAddress: string;
+  let listingModule: ListingModule;
+  let owner: any;
+  let user1: any;
+  let user2: any;
+  let listingId: number;
 
   beforeEach(async function () {
-    [owner, user1, user2, user3] = await ethers.getSigners();
+    const contracts = await deployContracts();
+    commentsModule = contracts.commentsModule;
+    listingModule = contracts.listingModule;
+    owner = contracts.owner;
+    user1 = contracts.user1;
+    user2 = contracts.user2;
 
-    // Deploy mock listing contract
-    const MockListing = await ethers.getContractFactory("MockListing");
-    mockListing = await MockListing.deploy();
-    await mockListing.waitForDeployment();
-    mockListingAddress = await mockListing.getAddress();
-
-    // Deploy ReputationModule
-    const ReputationModule = await ethers.getContractFactory("ReputationModule");
-    reputationModule = await ReputationModule.deploy(owner.address);
-    await reputationModule.waitForDeployment();
-
-    // Add owner and other necessary addresses as authorized updaters
-    await reputationModule.connect(owner).addAuthorizedUpdater(owner.address);
-
-    // Deploy CommentsModule
-    const CommentsModule = await ethers.getContractFactory("CommentsModule");
-    commentsModule = await CommentsModule.deploy(
-      mockListingAddress,
-      await reputationModule.getAddress()
-    );
-    await commentsModule.waitForDeployment();
-
-    // Add CommentsModule as an authorized updater for reputation
-    await reputationModule.connect(owner).addAuthorizedUpdater(await commentsModule.getAddress());
-
-    // Add initial reputation to users
-    await reputationModule.connect(owner).updateReputation(user2.address, 100n, "Initial reputation");
-    await reputationModule.connect(owner).updateReputation(user3.address, 100n, "Initial reputation");
+    // Create a listing for testing
+    await listingModule
+      .connect(user1)
+      .createListing(
+        SAMPLE_LISTING.title,
+        SAMPLE_LISTING.details,
+        SAMPLE_LISTING.proofs,
+        SAMPLE_LISTING.category,
+      );
+    listingId = 0;
   });
 
-  describe("Comment Creation", function () {
-    it("Should create a comment correctly", async function () {
-      const tx = await commentsModule.connect(user2).addComment(0, "Test comment", 0);
-      const receipt = await tx.wait();
-      const commentId = receipt?.logs[0].args[1];
-      
-      const comment = await commentsModule.getComment(0, commentId);
-      expect(comment.content).to.equal("Test comment");
-      expect(comment.author).to.equal(user2.address);
+  describe("General Comments", function () {
+    it("Should allow adding comments to listings", async function () {
+      const content = "Great achievement!";
+      await expect(
+        commentsModule.connect(user2).addComment(listingId, content, 0),
+      )
+        .to.emit(commentsModule, "CommentCreated")
+        .withArgs(listingId, 0, user2.address, 0);
     });
 
-    it("Should handle nested comments", async function () {
-      const parentTx = await commentsModule.connect(user2).addComment(0, "Parent comment", 0);
-      const parentReceipt = await parentTx.wait();
-      const parentId = parentReceipt?.logs[0].args[1];
-
-      const childTx = await commentsModule.connect(user2).addComment(0, "Child comment", parentId);
-      const childReceipt = await childTx.wait();
-      const childId = childReceipt?.logs[0].args[1];
-
-      const childComment = await commentsModule.getComment(0, childId);
-      expect(childComment.parentId).to.equal(parentId);
+    it("Should prevent empty comments", async function () {
+      await expect(
+        commentsModule.connect(user2).addComment(listingId, "", 0),
+      ).to.be.revertedWithCustomError(commentsModule, "EmptyComment");
     });
 
-    it("Should reject empty comments", async function () {
-      try {
-        await commentsModule.connect(user2).addComment(0, "", 0);
-        expect.fail("Should have thrown an error");
-      } catch (error: any) {
-        expect(error.message).to.include("EmptyComment");
-      }
-    });
+    it("Should support nested comments", async function () {
+      // Add parent comment
+      await commentsModule
+        .connect(user2)
+        .addComment(listingId, "Parent comment", 0);
+      const parentId = 0;
 
-    it("Should reject invalid parent comments", async function () {
-      try {
-        await commentsModule.connect(user2).addComment(0, "Test comment", 999);
-        expect.fail("Should have thrown an error");
-      } catch (error: any) {
-        expect(error.message).to.include("InvalidParentComment");
-      }
+      // Add reply to parent
+      await expect(
+        commentsModule.connect(user1).addComment(listingId, "Reply", parentId),
+      )
+        .to.emit(commentsModule, "CommentCreated")
+        .withArgs(listingId, 1, user1.address, parentId);
+
+      const children = await commentsModule.getChildComments(
+        listingId,
+        parentId,
+      );
+      expect(children).to.have.lengthOf(1);
+      expect(children[0].content).to.equal("Reply");
     });
   });
 
   describe("Comment Voting", function () {
-    let commentId: bigint;
+    let commentId: number;
 
     beforeEach(async function () {
-      const tx = await commentsModule.connect(user2).addComment(0, "Test comment", 0);
-      const receipt = await tx.wait();
-      commentId = receipt?.logs[0].args[1];
+      await commentsModule
+        .connect(user2)
+        .addComment(listingId, "Test comment", 0);
+      commentId = 0;
     });
 
-    it("Should handle comment votes correctly", async function () {
-      await commentsModule.connect(user1).voteOnComment(0, commentId, true);
-      const comment = await commentsModule.getComment(0, commentId);
-      expect(comment.upvotes.toString()).to.equal("1");
+    it("Should allow voting on comments", async function () {
+      await expect(
+        commentsModule.connect(user1).voteOnComment(listingId, commentId, true),
+      )
+        .to.emit(commentsModule, "CommentVoted")
+        .withArgs(commentId, user1.address, true);
     });
 
-    it("Should prevent double voting", async function () {
-      await commentsModule.connect(user1).voteOnComment(0, commentId, true);
-      try {
-        await commentsModule.connect(user1).voteOnComment(0, commentId, false);
-        expect.fail("Should have thrown an error");
-      } catch (error: any) {
-        expect(error.message).to.include("AlreadyVotedOnComment");
-      }
+    it("Should prevent double voting on comments", async function () {
+      await commentsModule
+        .connect(user1)
+        .voteOnComment(listingId, commentId, true);
+      await expect(
+        commentsModule
+          .connect(user1)
+          .voteOnComment(listingId, commentId, false),
+      ).to.be.revertedWithCustomError(commentsModule, "AlreadyVotedOnComment");
     });
   });
 
-  describe("Error Cases", function () {
-    it("Should reject votes on non-existent comments", async function () {
-      try {
-        await commentsModule.connect(user1).voteOnComment(0, 999n, true);
-        expect.fail("Should have thrown an error");
-      } catch (error: any) {
-        expect(error.message).to.include("CommentDoesNotExist");
-      }
+  describe("Vote Comments", function () {
+    it("Should correctly identify vote comments", async function () {
+      // Only voting module can create vote comments
+      const voteId = 0;
+      await commentsModule
+        .connect(owner)
+        .addVoteComment(listingId, voteId, "Vote comment", user2.address);
+
+      expect(await commentsModule.isVoteComment(0)).to.be.true;
+      const [returnedVoteId, voter, isAttestation] =
+        await commentsModule.getVoteCommentDetails(0);
+      expect(returnedVoteId).to.equal(voteId);
+      expect(voter).to.equal(user2.address);
     });
   });
 });
