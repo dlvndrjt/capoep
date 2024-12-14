@@ -1,72 +1,147 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
-import { ReputationModule } from "../typechain-types/contracts/modules/ReputationModule";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
+import { Contract } from "ethers";
+import { deployContracts } from "./helpers";
+import { ReputationModule } from "../typechain-types";
 
 describe("ReputationModule", function () {
   let reputationModule: ReputationModule;
-  let owner: SignerWithAddress;
-  let user1: SignerWithAddress;
-  let user2: SignerWithAddress;
-  let user3: SignerWithAddress;
+  let owner: any;
+  let user1: any;
+  let user2: any;
+  let authorizedUpdater: any;
 
   beforeEach(async function () {
-    [owner, user1, user2, user3] = await ethers.getSigners();
-    const ReputationModule = await ethers.getContractFactory("ReputationModule");
-    reputationModule = await ReputationModule.deploy(owner.address);
-    await reputationModule.waitForDeployment();
-    
-    // Add owner as an updater
-    await reputationModule.connect(owner).addAuthorizedUpdater(owner.address);
-  });
+    const contracts = await deployContracts();
+    reputationModule = contracts.reputationModule;
+    owner = contracts.owner;
+    user1 = contracts.user1;
+    user2 = contracts.user2;
+    [authorizedUpdater] = await ethers.getSigners();
 
-  describe("Reputation Updates", function () {
-    it("Should update reputation correctly", async function () {
-      await reputationModule.connect(owner).updateReputation(user1.address, 10n, "Test update");
-      const reputation = await reputationModule.getReputation(user1.address);
-      expect(reputation).to.equal(10n);
-    });
-
-    it("Should handle negative reputation", async function () {
-      await reputationModule.connect(owner).updateReputation(user1.address, -5n, "Negative update");
-      const reputation = await reputationModule.getReputation(user1.address);
-      expect(reputation).to.equal(-5n);
-    });
-
-    it("Should emit ReputationChanged event", async function () {
-      await expect(reputationModule.connect(owner).updateReputation(user1.address, 10n, "Test event"))
-        .to.emit(reputationModule, "ReputationChanged")
-        .withArgs(user1.address, 10n, "Test event");
-    });
-  });
-
-  describe("Threshold Checks", function () {
-    it("Should correctly check reputation thresholds", async function () {
-      await reputationModule.connect(owner).updateReputation(user1.address, 50n, "Threshold test");
-      const isAboveThreshold = await reputationModule.meetsReputationThreshold(user1.address, 40n);
-      expect(isAboveThreshold).to.be.true;
-    });
+    // Add an authorized updater for testing
+    await reputationModule.connect(owner).addAuthorizedUpdater(authorizedUpdater.address);
   });
 
   describe("Authorization", function () {
+    it("Should allow owner to add authorized updaters", async function () {
+      await expect(reputationModule.connect(owner).addAuthorizedUpdater(user1.address))
+        .to.emit(reputationModule, "UpdaterStatusChanged")
+        .withArgs(user1.address, true);
+
+      expect(await reputationModule.isAuthorizedUpdater(user1.address)).to.be.true;
+    });
+
+    it("Should allow owner to remove authorized updaters", async function () {
+      await reputationModule.connect(owner).addAuthorizedUpdater(user1.address);
+      await expect(reputationModule.connect(owner).removeAuthorizedUpdater(user1.address))
+        .to.emit(reputationModule, "UpdaterStatusChanged")
+        .withArgs(user1.address, false);
+
+      expect(await reputationModule.isAuthorizedUpdater(user1.address)).to.be.false;
+    });
+
+    it("Should prevent non-owners from managing updaters", async function () {
+      await expect(
+        reputationModule.connect(user1).addAuthorizedUpdater(user2.address)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    });
+  });
+
+  describe("Reputation Updates", function () {
+    it("Should allow authorized updaters to modify reputation", async function () {
+      const points = 10;
+      const reason = "Good contribution";
+
+      await expect(
+        reputationModule
+          .connect(authorizedUpdater)
+          .updateReputation(user1.address, points, reason)
+      )
+        .to.emit(reputationModule, "ReputationChanged")
+        .withArgs(user1.address, 0, points, reason);
+
+      expect(await reputationModule.getReputation(user1.address)).to.equal(points);
+    });
+
     it("Should prevent unauthorized updates", async function () {
       await expect(
-        reputationModule.connect(user1).updateReputation(user2.address, 10n, "Test update")
+        reputationModule
+          .connect(user2)
+          .updateReputation(user1.address, 10, "Unauthorized update")
       ).to.be.revertedWithCustomError(reputationModule, "UnauthorizedUpdate");
     });
 
-    it("Should allow adding and removing updaters", async function () {
-      // Add user2 as an authorized updater
-      await reputationModule.connect(owner).addAuthorizedUpdater(user2.address);
-      
-      // Remove user2 as an authorized updater
-      await reputationModule.connect(owner).removeAuthorizedUpdater(user2.address);
-      
-      // Verify user2 can no longer update reputation
+    it("Should handle negative reputation correctly", async function () {
+      const points = -5;
+      await reputationModule
+        .connect(authorizedUpdater)
+        .updateReputation(user1.address, points, "Penalty");
+
+      expect(await reputationModule.getReputation(user1.address)).to.equal(points);
+    });
+
+    it("Should track reputation thresholds correctly", async function () {
+      await reputationModule
+        .connect(authorizedUpdater)
+        .updateReputation(user1.address, 10, "Initial points");
+
+      expect(await reputationModule.meetsReputationThreshold(user1.address, 5)).to.be.true;
+      expect(await reputationModule.meetsReputationThreshold(user1.address, 15)).to.be.false;
+    });
+  });
+
+  describe("Specialized Updates", function () {
+    it("Should handle vote-based reputation updates", async function () {
       await expect(
-        reputationModule.connect(user2).updateReputation(user3.address, 10n, "Test update")
-      ).to.be.revertedWithCustomError(reputationModule, "UnauthorizedUpdate");
+        reputationModule.connect(authorizedUpdater).updateReputationFromVote(user1.address, true)
+      )
+        .to.emit(reputationModule, "ReputationChanged")
+        .withArgs(user1.address, 0, 1, "Received attestation");
+
+      await expect(
+        reputationModule.connect(authorizedUpdater).updateReputationFromVote(user1.address, false)
+      )
+        .to.emit(reputationModule, "ReputationChanged")
+        .withArgs(user1.address, 1, 0, "Received refutation");
+    });
+
+    it("Should handle comment feedback reputation updates", async function () {
+      await expect(
+        reputationModule
+          .connect(authorizedUpdater)
+          .updateReputationFromCommentFeedback(user1.address, true)
+      )
+        .to.emit(reputationModule, "ReputationChanged")
+        .withArgs(user1.address, 0, 1, "Comment upvoted");
+
+      await expect(
+        reputationModule
+          .connect(authorizedUpdater)
+          .updateReputationFromCommentFeedback(user1.address, false)
+      )
+        .to.emit(reputationModule, "ReputationChanged")
+        .withArgs(user1.address, 1, 0, "Comment downvoted");
+    });
+  });
+
+  describe("Initial Reputation", function () {
+    it("Should allow owner to set initial reputation", async function () {
+      const initialRep = 5;
+      await expect(
+        reputationModule.connect(owner).setInitialReputation(user1.address, initialRep)
+      )
+        .to.emit(reputationModule, "ReputationChanged")
+        .withArgs(user1.address, 0, initialRep, "Initial reputation set");
+
+      expect(await reputationModule.getReputation(user1.address)).to.equal(initialRep);
+    });
+
+    it("Should prevent setting initial reputation twice", async function () {
+      await reputationModule.connect(owner).setInitialReputation(user1.address, 5);
+      await expect(
+        reputationModule.connect(owner).setInitialReputation(user1.address, 10)
+      ).to.be.revertedWith("Reputation already set");
     });
   });
 });
