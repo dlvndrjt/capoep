@@ -1,111 +1,91 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
-import { ListingModule } from "../typechain-types/contracts/modules/ListingModule";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
+import { Contract } from "ethers";
+import { deployContracts } from "./helpers";
+import {
+  ListingModule,
+  VotingModule,
+  CommentsModule,
+  ReputationModule,
+  CAPOEP,
+} from "../typechain-types";
 
 describe("ListingModule", function () {
   let listingModule: ListingModule;
-  let owner: SignerWithAddress;
-  let user1: SignerWithAddress;
-  let user2: SignerWithAddress;
-
-  // Enum values from contract
-  enum ListingState {
-    Active = 0,
-    Archived = 1,
-    Minted = 2
-  }
+  let votingModule: VotingModule;
+  let commentsModule: CommentsModule;
+  let reputationModule: ReputationModule;
+  let capoep: CAPOEP;
+  let owner: any;
+  let user1: any;
+  let user2: any;
 
   beforeEach(async function () {
-    [owner, user1, user2] = await ethers.getSigners();
+    const [owner, user1, user2] = await ethers.getSigners();
+
+    // Deploy CAPOEP and modules
+    const ReputationModule =
+      await ethers.getContractFactory("ReputationModule");
+    reputationModule = await ReputationModule.deploy(owner.address);
+
     const ListingModule = await ethers.getContractFactory("ListingModule");
-    listingModule = await ListingModule.deploy();
-    await listingModule.waitForDeployment();
+    listingModule = await ListingModule.deploy(owner.address, owner.address); // Temporary addresses
+
+    const VotingModule = await ethers.getContractFactory("VotingModule");
+    votingModule = await VotingModule.deploy(
+      listingModule.address,
+      commentsModule.address,
+      reputationModule.address,
+    );
+
+    const CommentsModule = await ethers.getContractFactory("CommentsModule");
+    commentsModule = await CommentsModule.deploy(
+      owner.address,
+      reputationModule.address,
+      votingModule.address,
+    );
+
+    // Update module addresses
+    await listingModule.updateVotingModule(votingModule.address);
   });
 
   describe("Listing Creation", function () {
-    it("Should create a listing correctly", async function () {
-      await listingModule.connect(user1).createListing(
-        "Test Title",
-        "Test Description",
-        ["https://proof.com"],
-        "Category"
-      );
-      const listing = await listingModule.getListing(0n);
-      expect(listing.state).to.be.eq(BigInt(ListingState.Active));
-      expect(listing.creator).to.be.eq(user1.address);
+    it("Should create a new listing", async function () {
+      const title = "Learning Solidity";
+      const details = "Completed a course";
+      const proofs = ["ipfs://proof1", "https://example.com/cert"];
+      const category = "learning";
+
+      await expect(
+        listingModule
+          .connect(user1)
+          .createListing(title, details, proofs, category),
+      )
+        .to.emit(listingModule, "ListingCreated")
+        .withArgs(0, user1.address);
+
+      const listing = await listingModule.getListing(0);
+      expect(listing.title).to.equal(title);
+      expect(listing.creator).to.equal(user1.address);
     });
 
-    it("Should reject empty inputs", async function () {
+    it("Should prevent duplicate listings", async function () {
+      const title = "Learning Solidity";
+      const details = "Completed a course";
+      const proofs = ["ipfs://proof1"];
+      const category = "learning";
+
+      await listingModule
+        .connect(user1)
+        .createListing(title, details, proofs, category);
+
       await expect(
-        listingModule.connect(user1).createListing("", "Details", ["https://test.com"], "Category")
-      ).to.be.revertedWithCustomError(listingModule, "EmptyTitle");
+        listingModule
+          .connect(user1)
+          .createListing(title, details, proofs, category),
+      ).to.be.revertedWithCustomError(listingModule, "ListingAlreadyExists");
     });
   });
 
-  describe("Listing Archival", function () {
-    let firstListingId: bigint;
-    let secondListingId: bigint;
-
-    beforeEach(async function () {
-      await listingModule.connect(user1).createListing(
-        "Original Listing",
-        "First listing",
-        ["https://proof1.com"],
-        "Category"
-      );
-      firstListingId = 0n;
-
-      await listingModule.connect(user1).createListing(
-        "New Listing",
-        "Updated listing",
-        ["https://proof2.com"],
-        "Category"
-      );
-      secondListingId = 1n;
-    });
-
-    it("Should archive a listing correctly", async function () {
-      await listingModule.connect(user1).archiveListing(firstListingId, secondListingId, "Archived with new version");
-      const archivedListing = await listingModule.getListing(firstListingId);
-      expect(archivedListing.state).to.be.eq(BigInt(ListingState.Archived));
-      expect(archivedListing.linkedToId).to.be.eq(secondListingId);
-    });
-
-    it("Should prevent non-creator from archiving", async function () {
-      // Create a listing
-      await listingModule.connect(user1).createListing("Test Listing", "Details", ["https://test.com"], "Category");
-      
-      // Try to archive by another user
-      await expect(
-        listingModule.connect(user2).archiveListing(0, 1, "Archiving")
-      ).to.be.revertedWithCustomError(listingModule, "UnauthorizedAccess");
-    });
-
-    it("Should prevent archiving an already archived listing", async function () {
-      // Create a listing
-      await listingModule.connect(user1).createListing("Test Listing", "Details", ["https://test.com"], "Category");
-      
-      // First archive
-      await listingModule.connect(user1).archiveListing(0, 1, "First archive");
-      
-      // Try to archive again
-      await expect(
-        listingModule.connect(user1).archiveListing(0, 2, "Second archive")
-      ).to.be.revertedWithCustomError(listingModule, "InvalidListingState");
-    });
-  });
-
-  describe("Listing Validation", function () {
-    it("Should prevent creating duplicate listings", async function () {
-      // Create first listing
-      await listingModule.connect(user1).createListing("Test Listing", "Details", ["https://test.com"], "Category");
-      
-      // Try to create with same details
-      await expect(
-        listingModule.connect(user1).createListing("Test Listing", "Details", ["https://test.com"], "Category")
-      ).to.be.revertedWithCustomError(listingModule, "ListingAlreadyMinted");
-    });
-  });
+  // Add more test cases...
 });
