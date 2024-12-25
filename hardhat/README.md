@@ -1,180 +1,125 @@
-# CAPOEP - Community Attested Proof of Education Protocol
+# Diamond-3-Hardhat Implementation
 
-CAPOEP is a decentralized protocol that enables community-driven verification of educational achievements. Users can create listings of their educational accomplishments, which are then verified through community attestations.
+This is an implementation for [EIP-2535 Diamond Standard](https://github.com/ethereum/EIPs/issues/2535). To learn about other implementations go here: https://github.com/mudgen/diamond
 
-## Features
+The standard loupe functions have been gas-optimized in this implementation and can be called in on-chain transactions. However keep in mind that a diamond can have any number of functions and facets so it is still possible to get out-of-gas errors when calling loupe functions. Except for the `facetAddress` loupe function which has a fixed gas cost.
 
-- **Educational Listings**: Create and manage educational achievement listings
-- **Community Attestation**: Get achievements verified by community votes
-- **Dual Comment System**: Separate systems for general comments and vote-comments
-- **Reputation System**: Dynamic reputation points based on community interaction
-- **Version Control**: Update and link different versions of achievements
-- **NFT Minting**: Convert verified achievements into NFTs
+**Note:** The loupe functions in DiamondLoupeFacet.sol MUST be added to a diamond and are required by the EIP-2535 Diamonds standard.
 
-## Smart Contracts
+## Installation
 
-The protocol consists of several modular components:
-
-- `CAPOEP.sol`: Main contract integrating all modules
-- `ListingModule.sol`: Manages educational achievement listings
-- `VotingModule.sol`: Handles attestations and refutations
-- `CommentsModule.sol`: Implements dual commenting system
-- `ReputationModule.sol`: Manages user reputation points
-- `MetadataModule.sol`: Handles NFT metadata generation
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js v18+
-- npm or yarn
-- Git
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/capoep.git
-cd capoep/hardhat
+1. Clone this repo:
+```console
+git clone git@github.com:mudgen/diamond-3-hardhat.git
 ```
 
-2. Install dependencies:
-```bash
+2. Install NPM packages:
+```console
+cd diamond-3-hardhat
 npm install
 ```
 
-3. Copy environment variables:
-```bash
-cp env.sample .env
+## Deployment
+
+```console
+npx hardhat run scripts/deploy.js
 ```
 
-4. Configure your `.env` file with appropriate values:
-- Add your private key
-- Add API keys for Alchemy, Etherscan, etc.
+### How the scripts/deploy.js script works
 
-### Development
+1. DiamondCutFacet is deployed.
+1. The diamond is deployed, passing as arguments to the diamond constructor the owner address of the diamond and the DiamondCutFacet address. DiamondCutFacet has the `diamondCut` external function which is used to upgrade the diamond to add more functions.
+1. The `DiamondInit` contract is deployed. This contains an `init` function which is called on the first diamond upgrade to initialize state of some state variables. Information on how the `diamondCut` function works is here: https://eips.ethereum.org/EIPS/eip-2535#diamond-interface
+1. Facets are deployed.
+1. The diamond is upgraded. The `diamondCut` function is used to add functions from facets to the diamond. In addition the `diamondCut` function calls the `init` function from the `DiamondInit` contract using `delegatecall` to initialize state variables.
 
-1. Compile contracts:
-```bash
-npm run compile
+How a diamond is deployed is not part of the EIP-2535 Diamonds standard. This implementation shows a usable example. 
+
+## Run tests:
+```console
+npx hardhat test
 ```
 
-2. Run tests:
-```bash
-npm test
+## Upgrade a diamond
+
+Check the `scripts/deploy.js` and or the `test/diamondTest.js` file for examples of upgrades.
+
+Note that upgrade functionality is optional. It is possible to deploy a diamond that can't be upgraded, which is a 'Single Cut Diamond'.  It is also possible to deploy an upgradeable diamond and at a later date remove its `diamondCut` function so it can't be upgraded any more.
+
+Note that any number of functions from any number of facets can be added/replaced/removed on a diamond in a single transaction. In addition an initialization function can be executed in the same transaction as an upgrade to initialize any state variables required for an upgrade. This 'everything done in a single transaction' capability ensures a diamond maintains a correct and consistent state during upgrades.
+
+## Facet Information
+
+The `contracts/Diamond.sol` file shows an example of implementing a diamond.
+
+The `contracts/facets/DiamondCutFacet.sol` file shows how to implement the `diamondCut` external function.
+
+The `contracts/facets/DiamondLoupeFacet.sol` file shows how to implement the four standard loupe functions.
+
+The `contracts/libraries/LibDiamond.sol` file shows how to implement Diamond Storage and a `diamondCut` internal function.
+
+The `scripts/deploy.js` file shows how to deploy a diamond.
+
+The `test/diamondTest.js` file gives tests for the `diamondCut` function and the Diamond Loupe functions.
+
+## How to Get Started Making Your Diamond
+
+1. Reading and understand [EIP-2535 Diamonds](https://github.com/ethereum/EIPs/issues/2535). If something is unclear let me know!
+
+2. Use a diamond reference implementation. You are at the right place because this is the README for a diamond reference implementation.
+
+This diamond implementation is boilerplate code that makes a diamond compliant with EIP-2535 Diamonds.
+
+Specifically you can copy and use the [DiamondCutFacet.sol](./contracts/facets/DiamondCutFacet.sol) and [DiamondLoupeFacet.sol](./contracts/facets/DiamondLoupeFacet.sol) contracts. They implement the `diamondCut` function and the loupe functions.
+
+The [Diamond.sol](./contracts/Diamond.sol) contract could be used as is, or it could be used as a starting point and customized. This contract is the diamond. Its deployment creates a diamond. It's address is a stable diamond address that does not change.
+
+The [LibDiamond.sol](./contracts/libraries/LibDiamond.sol) library could be used as is. It shows how to implement Diamond Storage. This contract includes contract ownership which you might want to change if you want to implement DAO-based ownership or other form of contract ownership. Go for it. Diamonds can work with any kind of contract ownership strategy. This library contains an internal function version of `diamondCut` that can be used in the constructor of a diamond or other places.
+
+## Calling Diamond Functions
+
+In order to call a function that exists in a diamond you need to use the ABI information of the facet that has the function.
+
+Here is an example that uses web3.js:
+
+```javascript
+let myUsefulFacet = new web3.eth.Contract(MyUsefulFacet.abi, diamondAddress);
 ```
 
-3. Run test coverage:
-```bash
-npm run coverage
+In the code above we create a contract variable so we can call contract functions with it.
+
+In this example we know we will use a diamond because we pass a diamond's address as the second argument. But we are using an ABI from the MyUsefulFacet facet so we can call functions that are defined in that facet. MyUsefulFacet's functions must have been added to the diamond (using diamondCut) in order for the diamond to use the function information provided by the ABI of course.
+
+Similarly you need to use the ABI of a facet in Solidity code in order to call functions from a diamond. Here's an example of Solidity code that calls a function from a diamond:
+
+```solidity
+string result = MyUsefulFacet(address(diamondContract)).getResult()
 ```
 
-4. Start local node:
-```bash
-npm run node
-```
+## Get Help and Join the Community
 
-### Deployment
+If you need help or would like to discuss diamonds then send me a message [on twitter](https://twitter.com/mudgen), or [email me](mailto:nick@perfectabstractions.com). Or join the [EIP-2535 Diamonds Discord server](https://discord.gg/kQewPw2).
 
-1. Deploy to local network:
-```bash
-npm run deploy:local
-```
+## Useful Links
+1. [Introduction to the Diamond Standard, EIP-2535 Diamonds](https://eip2535diamonds.substack.com/p/introduction-to-the-diamond-standard)
+1. [EIP-2535 Diamonds](https://github.com/ethereum/EIPs/issues/2535)
+1. [Understanding Diamonds on Ethereum](https://dev.to/mudgen/understanding-diamonds-on-ethereum-1fb)
+1. [Solidity Storage Layout For Proxy Contracts and Diamonds](https://medium.com/1milliondevs/solidity-storage-layout-for-proxy-contracts-and-diamonds-c4f009b6903)
+1. [New Storage Layout For Proxy Contracts and Diamonds](https://medium.com/1milliondevs/new-storage-layout-for-proxy-contracts-and-diamonds-98d01d0eadb)
+1. [Upgradeable smart contracts using the Diamond Standard](https://hiddentao.com/archives/2020/05/28/upgradeable-smart-contracts-using-diamond-standard)
+1. [buidler-deploy supports diamonds](https://github.com/wighawag/buidler-deploy/)
 
-2. Deploy to testnet (Sepolia):
-```bash
-npm run deploy:sepolia
-```
+## Author
 
-3. Deploy to testnet (Mumbai):
-```bash
-npm run deploy:mumbai
-```
+This example implementation was written by Nick Mudge.
 
-### Contract Verification
+Contact:
 
-After deployment, verify contracts on the blockchain explorer:
-
-1. For Sepolia:
-```bash
-npm run verify:sepolia
-```
-
-2. For Mumbai:
-```bash
-npm run verify:mumbai
-```
-
-## Usage
-
-### Creating a Listing
-
-```typescript
-const title = "Learning Solidity";
-const details = "Completed advanced Solidity course";
-const proofs = ["https://proof1.com"];
-const category = "Learning";
-
-await capoep.createListing(title, details, proofs, category);
-```
-
-### Voting on a Listing
-
-```typescript
-const listingId = 0;
-const isAttest = true;
-const comment = "Verified the course completion";
-
-await capoep.castVote(listingId, isAttest, comment);
-```
-
-### Adding Comments
-
-```typescript
-const listingId = 0;
-const content = "Great achievement!";
-const parentId = 0; // 0 for top-level comments
-
-await capoep.addComment(listingId, content, parentId);
-```
-
-### Minting NFT
-
-```typescript
-const listingId = 0;
-await capoep.mintFromListing(listingId);
-```
-
-## Testing
-
-The project includes comprehensive tests for all functionality:
-
-- Unit tests for each module
-- Integration tests for the complete system
-- Gas usage reports
-- Coverage reports
-
-Run the full test suite:
-```bash
-npm test
-```
-
-## Security
-
-- All contracts use OpenZeppelin's secure implementations
-- Comprehensive access control
-- Reputation-based voting restrictions
-- State validation checks
-- Reentrancy protection
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
+- https://twitter.com/mudgen
+- nick@perfectabstractions.com
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT license. See the license file.
+Anyone can use or modify this software for their purposes.
+
