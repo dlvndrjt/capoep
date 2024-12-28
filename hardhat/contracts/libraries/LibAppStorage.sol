@@ -22,6 +22,7 @@ struct User {
     uint256[] votedEntries; // List of Entry IDs the user has voted on. (contains voteDetails(vote+comment))
     uint256[] commentedEntries; // List of Entry IDs the user has commented on
     uint256[] votedOnCommentsEntries; // List of Entry IDs where the user has voted on comments
+    mapping(uint256 => bool) hasVotedEntry; // Mapping to track whether the user has voted on a specific Entry
 }
 // USER STATES END
 
@@ -42,7 +43,7 @@ enum VoteType {
 // Struct to store vote details along with the comment
 struct VoteDetail {
     VoteType voteType; // Type of the vote (Attest or Refute)
-    string voteComment; // The comment explaining the reason for the vote
+    uint256 voteCommentId; // ID linking to a VoteComment for this vote
     uint256 votedAt; // Timestamp of vote
 }
 
@@ -65,8 +66,40 @@ struct Entry {
 }
 // ENTRY STATES END
 
+// COMMENT STATES
+
+// A struct to store vote details for each comment
+struct CommentVote {
+    address voter; // The address of the voter
+    bool isUpvote; // True if upvote, false if downvote
+    uint256 timestamp; // Timestamp when the vote was cast
+}
+
+// Unified Comment struct for both Vote-Comments and General Comments
+struct Comment {
+    uint256 id; // Unique ID of the comment
+    bool isVoteComment; // Flag to indicate if it's a vote-comment or a general comment
+    address author; // Author of the comment
+    string content; // Content of the comment
+    uint256 timestamp; // Timestamp when the comment was created
+    uint256 parentId; // Parent comment ID (0 if it's a root comment)
+    uint256 entryId; // The associated Entry ID (for general comments)
+    uint256 voteId; // The associated Vote ID (for vote-comments)
+    uint256[] replies; // List of Comment IDs for replies (nested comments)
+    // Mappings for upvotes and downvotes
+    mapping(address => CommentVote) upvotes; // Mapping to store upvotes (address => vote details)
+    mapping(address => CommentVote) downvotes; // Mapping to store downvotes (address => vote details)
+}
+
+// COMMENT STATES END
+
 // The storage struct holds all necessary state variables for facets
 struct AppStorage {
+    // USER STORAGE
+    uint256 nextUserId; // Counter for generating unique User IDs
+    mapping(address => User) users; // User Address => User struct
+    // USER STORAGE END
+
     // ENTRY STORAGE
     uint256 nextEntryId; // Counter for generating unique Entry IDs
     mapping(uint256 => Entry) Entries; // Stores Entries by ID
@@ -74,10 +107,13 @@ struct AppStorage {
     mapping(uint256 => uint256[]) versionHistory; // Stores version history for each Entry
     // ENTRY STORAGE END
 
-    // USER STORAGE
-    uint256 nextUserId; // Counter for generating unique User IDs
-    mapping(address => User) users; // User Address => User struct
-    // USER STORAGE END
+    // COMMENT STORAGE
+    uint256 nextCommentId; // Counter for generating unique Comment IDs
+    mapping(uint256 => Comment) comments; // Comment ID => Comment data
+    mapping(uint256 => uint256[]) commentsByEntry; // Entry ID => List of Comment IDs (general comments)
+    mapping(uint256 => uint256[]) commentsByVote; // Vote ID => List of Comment IDs (vote-comments)
+    mapping(uint256 => uint256[]) repliesByComment; // Comment ID => List of Comment IDs (replies to comments)
+    // COMMENT STORAGE END
 }
 
 library LibAppStorage {
@@ -98,19 +134,6 @@ library LibAppStorage {
 
 contract Modifiers {
     AppStorage internal s;
-
-    modifier onlyVotingModule() {
-        require(
-            msg.sender == s.votingModule,
-            "Unauthorized: Not voting module"
-        );
-        _;
-    }
-
-    modifier onlyCapoep() {
-        require(msg.sender == s.capoepAddress, "Unauthorized: Not CAPOEP");
-        _;
-    }
 
     modifier entryExists(uint256 entryId) {
         require(entryId < s.nextEntryId, "Invalid entry ID");
@@ -133,18 +156,18 @@ contract Modifiers {
         _;
     }
 
-    modifier canEditentry(uint256 entryId) {
-        require(
-            entryId < s.nextEntryId &&
-                s.Entries[entryId].state == EntryState.Active &&
-                !hasVotes(entryId),
-            "Cannot edit entry: Invalid state or has votes"
-        );
-        _;
-    }
+    //     modifier canEditentry(uint256 entryId) {
+    //         require(
+    //             entryId < s.nextEntryId &&
+    //                 s.Entries[entryId].state == EntryState.Active &&
+    //                 !hasVotes(entryId),
+    //             "Cannot edit entry: Invalid state or has votes"
+    //         );
+    //         _;
+    //     }
 
-    function hasVotes(uint256 entryId) internal view returns (bool) {
-        EntryCount memory counts = s.EntryCounts[entryId];
-        return counts.attestCount > 0 || counts.refuteCount > 0;
-    }
+    //     function hasVotes(uint256 entryId) internal view returns (bool) {
+    //         EntryCount memory counts = s.EntryCounts[entryId];
+    //         return counts.attestCount > 0 || counts.refuteCount > 0;
+    //     }
 }
