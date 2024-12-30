@@ -18,11 +18,13 @@ struct User {
     address walletAddress; // Wallet address of the user
     uint256 registeredAt; // Timestamp of user registration
     uint256 reputationScore; // Reputation score of the user
+    bool isBanned; // Flag indicating if the user is banned
     uint256[] createdEntries; // List of Entry IDs created by the user
     uint256[] votedEntries; // List of Entry IDs the user has voted on. (contains voteDetails(vote+comment))
     uint256[] commentedEntries; // List of Entry IDs the user has commented on
     uint256[] votedOnCommentsEntries; // List of Entry IDs where the user has voted on comments
     mapping(uint256 => bool) hasVotedEntry; // Mapping to track whether the user has voted on a specific Entry
+    mapping(uint256 => VoteDetail) entryVotes; // Track votes per entry (entryId => VoteDetail)
 }
 // USER STATES END
 
@@ -42,8 +44,10 @@ enum VoteType {
 
 // Struct to store vote details along with the comment
 struct VoteDetail {
+    address voter; // Voter address
     VoteType voteType; // Type of the vote (Attest or Refute)
     uint256 voteCommentId; // ID linking to a VoteComment for this vote
+    uint256 voteIndex; // Index in votes array for efficient removal
     uint256 votedAt; // Timestamp of vote
 }
 
@@ -56,12 +60,16 @@ struct Entry {
     string[] proofs; // Proofs related to the Entry
     string category; // Category of the Entry
     uint256 createdAt; // Timestamp of Entry creation
+    uint256 editedAt; // Timestamp of Entry last edit
+    uint256 archivedAt; // Timestamp of Entry archival
     EntryState state; // Current state of the Entry (Active, Archived, Minted)
-    VoteDetail[] votes; // Array of vote details (attest/refute + comment) for the Entry
+    VoteDetail[] votes; // List of votes for the Entry
+    mapping(address => VoteDetail) addressToVotes; // Map voter address to their vote
     uint256 totalAttestCount; // Total number of attest votes for the Entry
     uint256 totalRefuteCount; // Total number of refute votes for the Entry
-    uint256 linkedToPreviousId; // Linked to a previous Entry if current Entry is made on top of an archived Entry
-    uint256 linkedToNewId; // Linked to a new Entry if current Entry is archived and a new Entry is made on top of it
+    uint256 linkedToPreviousId; // Linked to a previous Entry if this Entry is created upon an archived Entry
+    uint256 linkedToNewId; // Linked to a new Entry if this Entry is archived and a new Entry is created upon it
+    uint256[] previousEntries; // Array to track all previous linked entries ("version history")
     string archiveNote; // Archive note when applicable
 }
 // ENTRY STATES END
@@ -87,8 +95,13 @@ struct Comment {
     uint256 voteId; // The associated Vote ID (for vote-comments)
     uint256[] replies; // List of Comment IDs for replies (nested comments)
     // Mappings for upvotes and downvotes
-    mapping(address => CommentVote) upvotes; // Mapping to store upvotes (address => vote details)
-    mapping(address => CommentVote) downvotes; // Mapping to store downvotes (address => vote details)
+    mapping(address => CommentVote) addressToUpvotes; // Mapping to store upvotes (address => vote details)
+    mapping(address => CommentVote) addressToDownvotes; // Mapping to store downvotes (address => vote details)
+    // list of all upvotes and downvotes
+    CommentVote[] upvotes;
+    CommentVote[] downvotes;
+    uint256 upvoteCount; // Total upvote count for the comment
+    uint256 downvoteCount; // Total downvote count for the comment
 }
 
 // COMMENT STATES END
@@ -103,8 +116,7 @@ struct AppStorage {
     // ENTRY STORAGE
     uint256 nextEntryId; // Counter for generating unique Entry IDs
     mapping(uint256 => Entry) Entries; // Stores Entries by ID
-    mapping(bytes32 => bool) EntryHashes; // Prevents duplicate Entries
-    mapping(uint256 => uint256[]) versionHistory; // Stores version history for each Entry
+    mapping(bytes32 => bool) EntryHashes; // Prevents duplicate Entries from same user
     // ENTRY STORAGE END
 
     // COMMENT STORAGE
@@ -129,6 +141,11 @@ library LibAppStorage {
         //... do more stuff
     }
 }
+
+// // Helper function to generate the hash for entries
+// function generateEntryHash(string memory title, string memory details, string memory category) internal pure returns (bytes32) {
+//     return keccak256(abi.encodePacked(title, details, category));
+// }
 
 // --- Modifiers ---
 
