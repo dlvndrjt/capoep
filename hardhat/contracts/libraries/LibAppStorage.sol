@@ -22,8 +22,9 @@ struct User {
     uint256[] createdEntries; // List of Entry IDs created by the user
     uint256[] votedEntries; // List of Entry IDs the user has voted on. (contains voteDetails(vote+comment))
     uint256[] commentedEntries; // List of Entry IDs the user has commented on
-    uint256[] votedOnCommentsEntries; // List of Entry IDs where the user has voted on comments
-    mapping(uint256 => bool) hasVotedEntry; // Mapping to track whether the user has voted on a specific Entry
+    uint256[] votedOnComments; // List of Comment IDs where the user has voted on comments
+    mapping(uint256 => bool) hasVotedComment; // Track whether the user has voted on a specific Comment
+    mapping(uint256 => bool) hasVotedEntry; // Track whether the user has voted on a specific Entry
     mapping(uint256 => VoteDetail) entryVotes; // Track votes per entry (entryId => VoteDetail)
 }
 // USER STATES END
@@ -44,6 +45,7 @@ enum VoteType {
 
 // Struct to store vote details along with the comment
 struct VoteDetail {
+    uint256 voteId; // ID of the vote
     address voter; // Voter address
     VoteType voteType; // Type of the vote (Attest or Refute)
     uint256 voteCommentId; // ID linking to a VoteComment for this vote
@@ -90,6 +92,7 @@ struct Comment {
     address author; // Author of the comment
     string content; // Content of the comment
     uint256 timestamp; // Timestamp when the comment was created
+    uint256 editedAt; // Timestamp when the comment was last edited
     uint256 parentId; // Parent comment ID (0 if it's a root comment)
     uint256 entryId; // The associated Entry ID (for general comments)
     uint256 voteId; // The associated Vote ID (for vote-comments)
@@ -115,17 +118,22 @@ struct AppStorage {
 
     // ENTRY STORAGE
     uint256 nextEntryId; // Counter for generating unique Entry IDs
-    mapping(uint256 => Entry) Entries; // Stores Entries by ID
-    mapping(bytes32 => bool) EntryHashes; // Prevents duplicate Entries from same user
+    mapping(uint256 => Entry) entries; // Stores Entries by ID
+    mapping(bytes32 => bool) entryHashes; // Prevents duplicate Entries from same user
     // ENTRY STORAGE END
 
     // COMMENT STORAGE
     uint256 nextCommentId; // Counter for generating unique Comment IDs
     mapping(uint256 => Comment) comments; // Comment ID => Comment data
-    mapping(uint256 => uint256[]) commentsByEntry; // Entry ID => List of Comment IDs (general comments)
-    mapping(uint256 => uint256[]) commentsByVote; // Vote ID => List of Comment IDs (vote-comments)
-    mapping(uint256 => uint256[]) repliesByComment; // Comment ID => List of Comment IDs (replies to comments)
+    mapping(uint256 => uint256[]) commentsByEntries; // Entry ID => List of Comment IDs (general comments)
+    mapping(uint256 => uint256[]) commentsByVotes; // Vote ID => List of Comment IDs (vote-comments)
+    mapping(uint256 => uint256[]) repliesByComments; // Comment ID (parent comment) => List of Comment IDs (replies to comments)
     // COMMENT STORAGE END
+
+    // VOTE STORAGE
+    uint256 nextVoteId; // Counter for generating unique Vote IDs
+    mapping(uint256 => VoteDetail) votes; // Vote ID => VoteDetail
+    // VOTE STORAGE END
 }
 
 library LibAppStorage {
@@ -159,7 +167,7 @@ contract Modifiers {
 
     modifier onlyCreator(uint256 entryId) {
         require(
-            msg.sender == s.Entries[entryId].creator,
+            msg.sender == s.entries[entryId].creator,
             "Unauthorized: Not entry creator"
         );
         _;
@@ -167,7 +175,7 @@ contract Modifiers {
 
     modifier onlyActive(uint256 entryId) {
         require(
-            s.Entries[entryId].state == EntryState.Active,
+            s.entries[entryId].state == EntryState.Active,
             "Invalid entry State: Not Active"
         );
         _;
