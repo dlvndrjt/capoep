@@ -52,12 +52,12 @@ contract EntryFacet {
         if (previousEntryId != 0) {
             // Ensure the user is the creator of the previous entry
             require(
-                s.Entries[previousEntryId].creator == msg.sender,
+                s.entries[previousEntryId].creator == msg.sender,
                 "Only creator of archived entry can create a new linked entry to the archived entry"
             );
             // Ensure the previous entry is archived
             require(
-                s.Entries[previousEntryId].state == EntryState.Archived,
+                s.entries[previousEntryId].state == EntryState.Archived,
                 "Previous entry must be archived"
             );
         }
@@ -66,33 +66,14 @@ contract EntryFacet {
         bytes32 entryHash = keccak256(
             abi.encodePacked(msg.sender, title, details, category)
         );
-        require(!s.EntryHashes[entryHash], "Entry already exists");
+        require(!s.entryHashes[entryHash], "Entry already exists");
 
         // Create new entry ID and update AppStorage
         uint256 newEntryId = s.nextEntryId;
         s.nextEntryId++;
 
-        // Create the new entry
-        // (the following is giving an error: "Types in storage containing (nested) mappings cannot be assigned to.solidity(9214) uint256 newEntryId") Thus I have to use the following code after the commented code
-        // s.Entries[newEntryId] = Entry({
-        //     id: newEntryId,
-        //     creator: msg.sender,
-        //     title: title,
-        //     details: details,
-        //     proofs: proofs,
-        //     category: category,
-        //     createdAt: block.timestamp,
-        //     editedAt: block.timestamp,
-        //     state: EntryState.Active,
-        //     votes: new VoteDetail,
-        //     totalAttestCount: 0,
-        //     totalRefuteCount: 0,
-        //     linkedToPreviousId: previousEntryId,
-        //     linkedToNewId: 0,
-        //     previousEntries: new uint256, // Initialize as an empty array if no previous entries
-        //     archiveNote: ""
-        // });
-        Entry storage newEntry = s.Entries[newEntryId];
+        // Create new entry and update AppStorage
+        Entry storage newEntry = s.entries[newEntryId];
         newEntry.id = newEntryId;
         newEntry.creator = msg.sender;
         newEntry.title = title;
@@ -113,17 +94,17 @@ contract EntryFacet {
         // Link to the previous entry if applicable
         if (previousEntryId != 0) {
             // Add the previous entry ID to the new entry's `previousEntries` array
-            s.Entries[newEntryId].previousEntries.push(previousEntryId);
+            s.entries[newEntryId].previousEntries.push(previousEntryId);
         }
 
         // Mark the entry hash as used to prevent duplicates
-        s.EntryHashes[entryHash] = true;
+        s.entryHashes[entryHash] = true;
 
         // Add the entry to the user's list of created entries
         s.users[msg.sender].createdEntries.push(newEntryId);
 
         // Link the new entry to the previous one
-        s.Entries[previousEntryId].linkedToNewId = newEntryId;
+        s.entries[previousEntryId].linkedToNewId = newEntryId;
 
         emit EntryCreated(newEntryId, msg.sender, title, category);
     }
@@ -135,7 +116,7 @@ contract EntryFacet {
         string memory newDetails,
         string[] memory newProofs
     ) external {
-        Entry storage entry = s.Entries[entryId];
+        Entry storage entry = s.entries[entryId];
 
         // Ensure the user is the creator and the entry is still in an editable state
         require(entry.creator == msg.sender, "Only creator can edit");
@@ -174,7 +155,7 @@ contract EntryFacet {
     }
 
     function archiveEntry(uint256 entryId, string memory archiveNote) external {
-        Entry storage entry = s.Entries[entryId];
+        Entry storage entry = s.entries[entryId];
         require(
             entry.creator == msg.sender,
             "Only the creator can archive the entry"
@@ -223,7 +204,7 @@ contract EntryFacet {
         bool isAttest,
         uint256 voteCommentId
     ) external {
-        Entry storage entry = s.Entries[entryId];
+        Entry storage entry = s.entries[entryId];
 
         // Check if the entry is archived
         require(
@@ -241,7 +222,10 @@ contract EntryFacet {
         );
 
         // Record the vote
+        uint256 voteId = s.nextVoteId;
+        s.nextVoteId++;
         VoteDetail memory newVote = VoteDetail({
+            voteId: voteId,
             voter: msg.sender,
             voteType: isAttest ? VoteType.Attest : VoteType.Refute,
             voteCommentId: voteCommentId,
@@ -281,7 +265,7 @@ contract EntryFacet {
 
     // Function to unvote on an entry
     function unvoteEntry(uint256 entryId) external {
-        Entry storage entry = s.Entries[entryId];
+        Entry storage entry = s.entries[entryId];
 
         require(
             s.users[msg.sender].hasVotedEntry[entryId],
