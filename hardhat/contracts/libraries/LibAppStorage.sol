@@ -128,12 +128,26 @@ struct AppStorage {
     mapping(uint256 => uint256[]) commentsByEntries; // Entry ID => List of Comment IDs (general comments)
     mapping(uint256 => uint256[]) commentsByVotes; // Vote ID => List of Comment IDs (vote-comments)
     mapping(uint256 => uint256[]) repliesByComments; // Comment ID (parent comment) => List of Comment IDs (replies to comments)
+    // Mapping to track the index of comments in their respective arrays
+    mapping(uint256 => uint256) commentIndexInEntry; // Comment ID => Index in commentsByEntries
+    mapping(uint256 => uint256) commentIndexInVote; // Comment ID => Index in commentsByVotes
+    mapping(uint256 => uint256) commentIndexInReplies; // Comment ID => Index in repliesByComments
+    // Mapping to track the index of votes in their respective arrays
+    mapping(uint256 => uint256) upvoteIndex; // Comment ID => Index in upvotes
+    mapping(uint256 => uint256) downvoteIndex; // Comment ID => Index in downvotes
+    // Mapping to track the index of comments in the user's commentedEntries array
+    mapping(address => mapping(uint256 => uint256)) userCommentIndex; // User address => Comment ID => Index in commentedEntries
     // COMMENT STORAGE END
 
-    // VOTE STORAGE
+    // COMMENT VOTE STORAGE
     uint256 nextVoteId; // Counter for generating unique Vote IDs
     mapping(uint256 => VoteDetail) votes; // Vote ID => VoteDetail
-    // VOTE STORAGE END
+    // COMMENT VOTE STORAGE END
+
+    // REPUTATION STORAGE
+    // s.users[msg.sender].reputationScore handles the reputation score of the user so no need to store it here
+    // mapping(address => uint256) userReputation; // User address => Reputation score
+    // REPUTATION STORAGE END
 }
 
 library LibAppStorage {
