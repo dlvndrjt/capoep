@@ -20,6 +20,12 @@ contract EntryFacet {
         string newDetails,
         string[] newProofs
     );
+    event UpdateNoteAdded(
+        uint256 indexed entryId,
+        uint256 indexed updateNoteId,
+        address indexed author,
+        string content
+    );
     event EntryArchived(
         uint256 indexed entryId,
         address indexed creator,
@@ -154,6 +160,40 @@ contract EntryFacet {
         emit EntryEdited(entryId, msg.sender, newTitle, newDetails, newProofs);
     }
 
+    function addUpdateNote(uint256 entryId, string memory content) external {
+        // Check if the entry exists
+        require(s.entries[entryId].id != 0, "Entry does not exist");
+
+        // Check if the caller is the creator of the entry
+        require(
+            s.entries[entryId].creator == msg.sender,
+            "Only the creator can add update-notes"
+        );
+
+        // Check if the entry has reached the maximum number of update-notes
+        require(
+            s.updateNotesByEntry[entryId].length < 10,
+            "Maximum number of update-notes reached"
+        );
+
+        // Check if content is not empty
+        require(bytes(content).length > 0, "Content cannot be empty");
+
+        // Create a new update-note
+        uint256 updateNoteId = s.nextUpdateNoteId;
+        s.nextUpdateNoteId++;
+        UpdateNote storage newUpdateNote = s.updateNotes[updateNoteId];
+        newUpdateNote.id = updateNoteId;
+        newUpdateNote.entryId = entryId;
+        newUpdateNote.content = content;
+        newUpdateNote.timestamp = block.timestamp;
+
+        // Add the update-note to the entry's list of update-notes
+        s.updateNotesByEntry[entryId].push(updateNoteId);
+
+        emit UpdateNoteAdded(entryId, updateNoteId, msg.sender, content);
+    }
+
     function archiveEntry(uint256 entryId, string memory archiveNote) external {
         Entry storage entry = s.entries[entryId];
         require(
@@ -221,6 +261,12 @@ contract EntryFacet {
             "User has already voted on this entry"
         );
 
+        // Check if the user's reputation is above the threshold
+        require(
+            s.users[msg.sender].reputationScore > -10,
+            "User cannot vote due to low reputation"
+        );
+
         // Record the vote
         uint256 voteId = s.nextVoteId;
         s.nextVoteId++;
@@ -239,11 +285,13 @@ contract EntryFacet {
         // Add vote to the entry's votes array
         entry.votes.push(newVote);
 
-        // Update total vote counts
+        // Update total vote counts and user reputation score
         if (isAttest) {
             entry.totalAttestCount++;
+            s.users[msg.sender].reputationScore += 1;
         } else if (!isAttest) {
             entry.totalRefuteCount++;
+            s.users[msg.sender].reputationScore -= 1;
         }
 
         // Mark the user as having voted
@@ -276,7 +324,6 @@ contract EntryFacet {
         VoteDetail memory userVote = entry.addressToVotes[msg.sender];
 
         // Remove the vote from the entry's votes array
-        // delete entry.votes[userVote.voteIndex];
         entry.votes[userVote.voteIndex] = entry.votes[entry.votes.length - 1];
         entry.votes.pop();
 
@@ -292,10 +339,29 @@ contract EntryFacet {
         // Update total vote counts
         if (userVote.voteType == VoteType.Attest) {
             entry.totalAttestCount--;
+            // Decrease the entry creator's reputation (undo the attest vote)
+            s.users[entry.creator].reputationScore--;
         } else if (userVote.voteType == VoteType.Refute) {
             entry.totalRefuteCount--;
+            // Increase the entry creator's reputation (undo the refute vote)
+            s.users[entry.creator].reputationScore++;
         }
 
         emit EntryUnvoted(entryId, msg.sender);
     }
+
+    // function getUpdateNotesByEntry(
+    //     uint256 entryId
+    // ) external view returns (UpdateNote[] memory) {
+    //     uint256[] storage updateNoteIds = s.updateNotesByEntry[entryId];
+    //     UpdateNote[] memory updateNotes = new UpdateNote[](
+    //         updateNoteIds.length
+    //     );
+
+    //     for (uint256 i = 0; i < updateNoteIds.length; i++) {
+    //         updateNotes[i] = s.updateNotes[updateNoteIds[i]];
+    //     }
+
+    //     return updateNotes;
+    // }
 }
