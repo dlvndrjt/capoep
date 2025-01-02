@@ -17,7 +17,7 @@ struct User {
     string name; // Name of the user
     address walletAddress; // Wallet address of the user
     uint256 registeredAt; // Timestamp of user registration
-    uint256 reputationScore; // Reputation score of the user
+    int256 reputationScore; // Reputation score of the user
     bool isBanned; // Flag indicating if the user is banned
     uint256[] createdEntries; // List of Entry IDs created by the user
     uint256[] votedEntries; // List of Entry IDs the user has voted on. (contains voteDetails(vote+comment))
@@ -51,6 +51,14 @@ struct VoteDetail {
     uint256 voteCommentId; // ID linking to a VoteComment for this vote
     uint256 voteIndex; // Index in votes array for efficient removal
     uint256 votedAt; // Timestamp of vote
+}
+
+// Struct to store entry updates
+struct UpdateNote {
+    uint256 id; // Unique ID for the update-note
+    uint256 entryId; // The ID of the entry this update-note belongs to
+    string content; // The content of the update-note
+    uint256 timestamp; // Timestamp when the update-note was created
 }
 
 // The Entry struct which stores the details of each Entry
@@ -105,6 +113,8 @@ struct Comment {
     CommentVote[] downvotes;
     uint256 upvoteCount; // Total upvote count for the comment
     uint256 downvoteCount; // Total downvote count for the comment
+    bool deleted; // Flag to indicate if the comment is deleted
+    uint256 deletedAt; // Timestamp when the comment was deleted
 }
 
 // COMMENT STATES END
@@ -120,6 +130,10 @@ struct AppStorage {
     uint256 nextEntryId; // Counter for generating unique Entry IDs
     mapping(uint256 => Entry) entries; // Stores Entries by ID
     mapping(bytes32 => bool) entryHashes; // Prevents duplicate Entries from same user
+    // UPDATE-NOTE STORAGE
+    uint256 nextUpdateNoteId; // Counter for generating unique UpdateNote IDs
+    mapping(uint256 => UpdateNote) updateNotes; // UpdateNote ID => UpdateNote data
+    mapping(uint256 => uint256[]) updateNotesByEntry; // Entry ID => List of UpdateNote IDs
     // ENTRY STORAGE END
 
     // COMMENT STORAGE
@@ -133,10 +147,12 @@ struct AppStorage {
     mapping(uint256 => uint256) commentIndexInVote; // Comment ID => Index in commentsByVotes
     mapping(uint256 => uint256) commentIndexInReplies; // Comment ID => Index in repliesByComments
     // Mapping to track the index of votes in their respective arrays
-    mapping(uint256 => uint256) upvoteIndex; // Comment ID => Index in upvotes
-    mapping(uint256 => uint256) downvoteIndex; // Comment ID => Index in downvotes
+    mapping(uint256 => mapping(address => uint256)) upvoteIndex; // Comment ID => Voter address => Index in upvotes
+    mapping(uint256 => mapping(address => uint256)) downvoteIndex; // Comment ID => Voter address => Index in downvotes
     // Mapping to track the index of comments in the user's commentedEntries array
     mapping(address => mapping(uint256 => uint256)) userCommentIndex; // User address => Comment ID => Index in commentedEntries
+    // Mapping to track the index of comments in the user's votedOnComments array
+    mapping(address => mapping(uint256 => uint256)) votedOnCommentIndex; // User address => Comment ID => Index in votedOnComments
     // COMMENT STORAGE END
 
     // COMMENT VOTE STORAGE
