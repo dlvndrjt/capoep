@@ -45,6 +45,14 @@ contract CommentFacet {
             require(s.votes[voteId].voter != address(0), "Vote does not exist");
         }
 
+        // Check if the parent comment exists
+        if (parentId != 0) {
+            require(
+                s.comments[parentId].id != 0,
+                "Parent comment does not exist"
+            );
+        }
+
         // Check if content is not empty
         require(bytes(content).length > 0, "Content cannot be empty");
 
@@ -183,62 +191,20 @@ contract CommentFacet {
             "Only the author can delete the comment"
         );
 
-        // Remove the comment from the parent's replies (if it's a reply)
-        if (comment.parentId != 0) {
-            uint256[] storage parentReplies = s.repliesByComments[
-                comment.parentId
-            ];
-            uint256 index = s.commentIndexInReplies[commentId];
+        // Check if the comment is not already deleted
+        require(!comment.deleted, "Comment is already deleted");
 
-            // Swap and pop
-            if (index < parentReplies.length - 1) {
-                parentReplies[index] = parentReplies[parentReplies.length - 1];
-                s.commentIndexInReplies[parentReplies[index]] = index;
-            }
-            parentReplies.pop();
-        }
+        // vote-comments cannot be deleted
+        require(!comment.isVoteComment, "Vote comments cannot be deleted");
 
-        // Remove the comment from the entry's comments (if it's a general comment)
-        if (!comment.isVoteComment) {
-            uint256[] storage entryComments = s.commentsByEntries[
-                comment.entryId
-            ];
-            uint256 index = s.commentIndexInEntry[commentId];
+        // Delete the comment content
+        comment.content = "";
 
-            // Swap and pop
-            if (index < entryComments.length - 1) {
-                entryComments[index] = entryComments[entryComments.length - 1];
-                s.commentIndexInEntry[entryComments[index]] = index;
-            }
-            entryComments.pop();
-        }
+        // Mark the comment as deleted
+        comment.deleted = true;
 
-        // Remove the comment from the vote's comments (if it's a vote-comment)
-        if (comment.isVoteComment) {
-            uint256[] storage voteComments = s.commentsByVotes[comment.voteId];
-            uint256 index = s.commentIndexInVote[commentId];
-
-            // Swap and pop
-            if (index < voteComments.length - 1) {
-                voteComments[index] = voteComments[voteComments.length - 1];
-                s.commentIndexInVote[voteComments[index]] = index;
-            }
-            voteComments.pop();
-        }
-
-        // Remove the comment from the user's commented entries
-        uint256[] storage userComments = s.users[msg.sender].commentedEntries;
-        uint256 index = s.userCommentIndex[msg.sender][commentId];
-
-        // Swap and pop
-        if (index < userComments.length - 1) {
-            userComments[index] = userComments[userComments.length - 1];
-            s.userCommentIndex[msg.sender][userComments[index]] = index;
-        }
-        userComments.pop();
-
-        // Delete the comment from storage
-        delete s.comments[commentId];
+        // Add the deleted timestamp
+        comment.deletedAt = block.timestamp;
 
         emit CommentDeleted(commentId, msg.sender);
     }
@@ -253,25 +219,31 @@ contract CommentFacet {
             "Already upvoted this comment"
         );
 
+        // Check if the comment is not deleted
+        require(!comment.deleted, "Deleted comments cannot be upvoted");
+
         // Remove existing downvote if any
         if (comment.addressToDownvotes[msg.sender].timestamp != 0) {
             comment.downvoteCount--;
 
             // Remove the downvote from the downvotes array
-            uint256 index = s.downvoteIndex[commentId];
+            uint256 index = s.downvoteIndex[commentId][msg.sender];
             if (index < comment.downvotes.length - 1) {
                 comment.downvotes[index] = comment.downvotes[
                     comment.downvotes.length - 1
                 ];
-                s.downvoteIndex[commentId] = index; // Update the index for the moved downvote
+                s.downvoteIndex[commentId][msg.sender] = index; // Update the index for the moved downvote
             }
             comment.downvotes.pop();
+
+            // Increase the comment author's reputation (undo the downvote)
+            s.users[comment.author].reputationScore++;
 
             delete comment.addressToDownvotes[msg.sender];
         }
 
         // Add the upvote
-        s.upvoteIndex[commentId] = comment.upvotes.length;
+        s.upvoteIndex[commentId][msg.sender] = comment.upvotes.length;
 
         comment.upvotes.push(
             CommentVote({
@@ -289,9 +261,16 @@ contract CommentFacet {
             timestamp: block.timestamp
         });
 
+        // Increase the comment author's reputation
+        s.users[comment.author].reputationScore++;
+
         // Record that the user has voted on this comment
         if (!s.users[msg.sender].hasVotedComment[commentId]) {
             s.users[msg.sender].hasVotedComment[commentId] = true;
+            s.votedOnCommentIndex[msg.sender][commentId] = s
+                .users[msg.sender]
+                .votedOnComments
+                .length;
             s.users[msg.sender].votedOnComments.push(commentId);
         }
         emit CommentUpvoted(commentId, msg.sender);
@@ -310,25 +289,31 @@ contract CommentFacet {
             "Already downvoted this comment"
         );
 
+        // Check if the comment is not deleted
+        require(!comment.deleted, "Deleted comments cannot be downvoted");
+
         // Remove existing upvote if any
         if (comment.addressToUpvotes[msg.sender].timestamp != 0) {
             comment.upvoteCount--;
 
             // Remove the downvote from the downvotes array
-            uint256 index = s.upvoteIndex[commentId];
+            uint256 index = s.upvoteIndex[commentId][msg.sender];
             if (index < comment.upvotes.length - 1) {
                 comment.upvotes[index] = comment.upvotes[
                     comment.upvotes.length - 1
                 ];
-                s.upvoteIndex[commentId] = index; // Update the index for the moved upvote
+                s.upvoteIndex[commentId][msg.sender] = index; // Update the index for the moved upvote
             }
             comment.upvotes.pop();
+
+            // Decrease the comment author's reputation (undo the upvote)
+            s.users[comment.author].reputationScore--;
 
             delete comment.addressToUpvotes[msg.sender];
         }
 
         // Add the downvote
-        s.downvoteIndex[commentId] = comment.downvotes.length;
+        s.downvoteIndex[commentId][msg.sender] = comment.downvotes.length;
         comment.downvotes.push(
             CommentVote({
                 voter: msg.sender,
@@ -345,9 +330,16 @@ contract CommentFacet {
             timestamp: block.timestamp
         });
 
+        // Decrease the comment author's reputation
+        s.users[comment.author].reputationScore--;
+
         // Record that the user has voted on this comment
         if (!s.users[msg.sender].hasVotedComment[commentId]) {
             s.users[msg.sender].hasVotedComment[commentId] = true;
+            s.votedOnCommentIndex[msg.sender][commentId] = s
+                .users[msg.sender]
+                .votedOnComments
+                .length;
             s.users[msg.sender].votedOnComments.push(commentId);
         }
 
@@ -362,67 +354,78 @@ contract CommentFacet {
         Comment storage comment = s.comments[commentId];
 
         // Check if the user has upvoted or downvoted the comment
+        bool hasUpvoted = comment.addressToUpvotes[msg.sender].timestamp != 0;
+        bool hasDownvoted = comment.addressToDownvotes[msg.sender].timestamp !=
+            0;
         require(
-            comment.addressToUpvotes[msg.sender].timestamp != 0 ||
-                comment.addressToDownvotes[msg.sender].timestamp != 0,
+            hasUpvoted || hasDownvoted,
             "User has not voted on this comment"
         );
 
         // Remove the upvote if it exists
-        if (comment.addressToUpvotes[msg.sender].timestamp != 0) {
+        if (hasUpvoted) {
             // Decrement the upvote count
             comment.upvoteCount--;
 
             // Remove the upvote from the upvotes array
-            uint256 index = s.upvoteIndex[commentId];
-            if (index < comment.upvotes.length - 1) {
-                comment.upvotes[index] = comment.upvotes[
+            uint256 upvoteArrayIndex = s.upvoteIndex[commentId][msg.sender];
+            if (upvoteArrayIndex < comment.upvotes.length - 1) {
+                comment.upvotes[upvoteArrayIndex] = comment.upvotes[
                     comment.upvotes.length - 1
                 ];
-                s.upvoteIndex[commentId] = index; // Update the index for the moved upvote
+                s.upvoteIndex[commentId][
+                    comment.upvotes[upvoteArrayIndex].voter
+                ] = upvoteArrayIndex;
             }
             comment.upvotes.pop();
 
             // Remove the upvote from the addressToUpvotes mapping
             delete comment.addressToUpvotes[msg.sender];
+
+            // Decrease the comment author's reputation score
+            s.users[comment.author].reputationScore--;
         }
 
         // Remove the downvote if it exists
-        if (comment.addressToDownvotes[msg.sender].timestamp != 0) {
+        if (hasDownvoted) {
             // Decrement the downvote count
             comment.downvoteCount--;
 
             // Remove the downvote from the downvotes array
-            uint256 index = s.downvoteIndex[commentId];
-            if (index < comment.downvotes.length - 1) {
-                comment.downvotes[index] = comment.downvotes[
+            uint256 downvoteArrayIndex = s.downvoteIndex[commentId][msg.sender];
+            if (downvoteArrayIndex < comment.downvotes.length - 1) {
+                comment.downvotes[downvoteArrayIndex] = comment.downvotes[
                     comment.downvotes.length - 1
                 ];
-                s.downvoteIndex[commentId] = index;
+                s.downvoteIndex[commentId][
+                    comment.downvotes[downvoteArrayIndex].voter
+                ] = downvoteArrayIndex;
             }
             comment.downvotes.pop();
 
             // Remove the downvote from the addressToDownvotes mapping
             delete comment.addressToDownvotes[msg.sender];
+
+            // Increase the comment author's reputation (undo the downvote reputation decrease)
+            s.users[comment.author].reputationScore++;
         }
 
         // Remove the comment from the user's votedOnComments list
         uint256[] storage userVotedComments = s
             .users[msg.sender]
             .votedOnComments;
-        for (uint256 i = 0; i < userVotedComments.length; i++) {
-            if (userVotedComments[i] == commentId) {
-                // Swap and pop
-                userVotedComments[i] = userVotedComments[
-                    userVotedComments.length - 1
-                ];
-                userVotedComments.pop();
-                break;
-            }
+        uint256 index = s.votedOnCommentIndex[msg.sender][commentId];
+        if (index < userVotedComments.length - 1) {
+            userVotedComments[index] = userVotedComments[
+                userVotedComments.length - 1
+            ];
+            s.votedOnCommentIndex[msg.sender][userVotedComments[index]] = index;
         }
+        userVotedComments.pop();
 
         // Mark the user as not having voted on this comment
         delete s.users[msg.sender].hasVotedComment[commentId];
+        delete s.votedOnCommentIndex[msg.sender][commentId];
 
         emit CommentUnvoted(commentId, msg.sender);
     }
@@ -431,6 +434,8 @@ contract CommentFacet {
     // function getComment(
     //     uint256 commentId
     // ) external view returns (Comment memory) {
+
+    //     require(s.comments[commentId].id != 0, "Comment does not exist");
     //     return s.comments[commentId];
     // }
 
