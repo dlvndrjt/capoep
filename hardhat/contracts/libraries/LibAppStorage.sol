@@ -160,6 +160,11 @@ struct AppStorage {
     mapping(uint256 => VoteDetail) votes; // Vote ID => VoteDetail
     // COMMENT VOTE STORAGE END
 
+    // NFT STORAGE
+    uint256 nextTokenId; // Counter for generating unique token IDs
+    mapping(uint256 => uint256) tokenIdToEntryId; // Token ID => Entry ID
+    mapping(uint256 => string) tokenIdToTokenURI; // Token ID => Token URI
+
     // REPUTATION STORAGE
     // s.users[msg.sender].reputationScore handles the reputation score of the user so no need to store it here
     // mapping(address => uint256) userReputation; // User address => Reputation score
