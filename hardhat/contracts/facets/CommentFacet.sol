@@ -44,7 +44,7 @@ contract CommentFacet {
         array.pop();
     }
 
-    // Function to create a comment (either general or vote-comment)
+    // Function to create a comment (either general or vote-comment or reply)
     function createComment(
         uint256 entryId,
         string memory content,
@@ -86,7 +86,9 @@ contract CommentFacet {
         comment.content = content;
         comment.timestamp = block.timestamp;
         comment.parentId = parentId;
-        comment.entryId = entryId;
+        comment.entryId = parentId != 0
+            ? s.comments[parentId].entryId
+            : entryId;
         comment.voteId = voteId;
         comment.replies = new uint256[](0);
         comment.upvotes = new CommentVote[](0);
@@ -111,6 +113,9 @@ contract CommentFacet {
                 .repliesByComments[parentId]
                 .length;
             s.repliesByComments[parentId].push(commentId);
+
+            // Add the reply to the parent comment's replies
+            s.comments[parentId].replies.push(commentId);
         }
 
         // Add the comment to the user's list of commented entries
@@ -118,12 +123,12 @@ contract CommentFacet {
             .users[msg.sender]
             .commentedEntries
             .length;
-        s.users[msg.sender].commentedEntries.push(entryId);
+        s.users[msg.sender].commentedEntries.push(comment.entryId);
 
         emit CommentCreated(
             commentId,
             msg.sender,
-            entryId,
+            comment.entryId,
             content,
             isVoteComment
         );
@@ -152,52 +157,6 @@ contract CommentFacet {
         comment.editedAt = block.timestamp; // Update the edited timestamp
 
         emit CommentEdited(commentId, msg.sender, newContent);
-    }
-
-    // Function to reply to a comment
-    function replyToComment(
-        uint256 parentCommentId,
-        string memory content
-    ) external {
-        // Validate parent comment exists
-        require(
-            s.comments[parentCommentId].id != 0,
-            "Parent comment does not exist"
-        );
-
-        // Check if content is not empty
-        require(bytes(content).length > 0, "Content cannot be empty");
-
-        Comment storage parentComment = s.comments[parentCommentId];
-        uint256 replyId = s.nextCommentId++;
-
-        Comment storage reply = s.comments[replyId];
-
-        // replies cant be vote comments
-        reply.id = replyId;
-        reply.isVoteComment = false;
-        reply.author = msg.sender;
-        reply.content = content;
-        reply.timestamp = block.timestamp;
-        reply.parentId = parentCommentId;
-        reply.entryId = parentComment.entryId;
-        reply.voteId = 0;
-        reply.replies = new uint256[](0);
-        reply.upvotes = new CommentVote[](0);
-        reply.downvotes = new CommentVote[](0);
-        reply.upvoteCount = 0;
-        reply.downvoteCount = 0;
-
-        // Add the reply to the parent comment's replies
-        parentComment.replies.push(replyId);
-
-        // Add the comment to the user's list of commented entries
-        s.users[msg.sender].commentedEntries.push(parentComment.entryId);
-
-        // Add the reply to the list of replies
-        s.repliesByComments[parentCommentId].push(replyId);
-
-        emit CommentReplied(parentCommentId, replyId, msg.sender);
     }
 
     // Function to delete a comment
