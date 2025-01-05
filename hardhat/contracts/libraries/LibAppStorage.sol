@@ -162,8 +162,16 @@ struct AppStorage {
 
     // NFT STORAGE
     uint256 nextTokenId; // Counter for generating unique token IDs
-    mapping(uint256 => uint256) tokenIdToEntryId; // Token ID => Entry ID
-    mapping(uint256 => string) tokenIdToTokenURI; // Token ID => Token URI
+    string tokenName; // Token name
+    string tokenSymbol; // Token symbol
+    bool paused; // Pause state for the NFT contract
+    mapping(uint256 => address) owners; // Token ID => Owner
+    mapping(address => uint256) balances; // Owner => Balance
+    mapping(uint256 => string) tokenURIs; // Token ID => URI
+    mapping(uint256 => uint256) tokenToEntryId; // Token ID => Entry ID
+    mapping(address => bool) hasMinted; // User => Has minted NFT
+
+    // NFT STORAGE END
 
     // REPUTATION STORAGE
     // s.users[msg.sender].reputationScore handles the reputation score of the user so no need to store it here
