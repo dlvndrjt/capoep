@@ -3,8 +3,10 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
+import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 // import "@openzeppelin/contracts/utils/Counters.sol";
 import "../libraries/LibAppStorage.sol";
+import "../libraries/LibDiamond.sol";
 
 contract NFTFacet is IERC721, IERC721Metadata {
     AppStorage internal s;
@@ -15,6 +17,15 @@ contract NFTFacet is IERC721, IERC721Metadata {
         uint256 indexed entryId,
         string uri
     );
+
+    function supportsInterface(
+        bytes4 interfaceId
+    ) external pure override returns (bool) {
+        return
+            interfaceId == type(IERC721).interfaceId ||
+            interfaceId == type(IERC721Metadata).interfaceId ||
+            interfaceId == type(IERC165).interfaceId;
+    }
 
     // ERC721Metadata
     function name() external pure override returns (string memory) {
